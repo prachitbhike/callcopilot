@@ -1,0 +1,12 @@
+{
+ "calls_evaluated": 80,
+ "critical_recall": 1.0,
+ "judge_critical_recall": 1.0,
+ "clean_call_fp_rate": 0.0,
+ "clean_calls": 45,
+ "evidence_validity": 1.0,
+ "evidence_failures": 0,
+ "judge_defects_total": 21,
+ "layer_agreement": 1.0,
+ "spearman_rho": -0.6343350474165467
+}

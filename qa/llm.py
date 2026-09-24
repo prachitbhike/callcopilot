@@ -4,7 +4,8 @@ forced tool use needs thinking disabled there. Older models (Haiku 4.5) take tem
 
 def sampling_kwargs(model: str, temperature: float) -> dict:
     legacy = any(t in model for t in ("haiku-4", "sonnet-4", "opus-4", "3-"))
-    return {"temperature": temperature} if legacy else {"thinking": {"type": "disabled"}}
+    # anthropic 1.x dropped `temperature` from create(); older models still honour it via extra_body
+    return {"extra_body": {"temperature": temperature}} if legacy else {"thinking": {"type": "disabled"}}
 
 
 def client_kwargs() -> dict:

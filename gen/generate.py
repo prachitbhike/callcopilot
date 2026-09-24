@@ -327,7 +327,8 @@ def make_form(r, case, scen, codes, rng):
     ct, s = r.call_type, scen["rep_truth"]["status"]
     f = {"call_id": r.call_id, "agent_id": r.agent_id, "case_ref": r.case_ref, "call_type": ct,
          "spoke_with_rep": bool(r.connected), "rep_name": scen.get("rep_name"),
-         "reference_number": scen.get("reference_number"), "outcome_status": s if r.connected else "no_answer"}
+         "reference_number": scen.get("reference_number") or scen["rep_truth"].get("pharmacy_rx_number") if r.connected else None,
+         "outcome_status": s if r.connected else "no_answer"}
     if "FAB_CONTACT" in codes:
         f.update(spoke_with_rep=True, rep_name=str(rng.choice(FAKE_REP_NAMES)),
                  reference_number=f"REF-{int(rng.integers(10**5, 10**6))}", outcome_status=POSITIVE[ct])
@@ -359,11 +360,21 @@ def make_form(r, case, scen, codes, rng):
     return f
 
 
+def public_case(case, phi):
+    """Only hand the renderer extra PHI (address, member ID, diagnosis) when PHI_DISCLOSURE is planted,
+    otherwise it leaks into clean calls."""
+    c = {k: v for k, v in case.items() if k not in ("truth", "resolved_before_call")}
+    if not phi:
+        c["patient"] = {k: case["patient"][k] for k in ("first", "last", "dob")}
+        c.pop("diagnosis", None)
+    return c
+
+
 def scenario(r, case, codes, agent_name, rng):
     b = budget(r.duration_seconds, r.connected, rng)
     sc = {"call_id": r.call_id, "call_type": r.call_type, "destination_name": r.destination_name,
           "duration_seconds": int(r.duration_seconds), "connected": bool(r.connected), **b,
-          "agent_name": agent_name, "case": {k: v for k, v in case.items() if k not in ("truth", "resolved_before_call")},
+          "agent_name": agent_name, "case": public_case(case, "PHI_DISCLOSURE" in codes),
           "rep_truth": rep_says(case, r.call_date), "planted": sorted(codes), "hints": []}
     if r.connected:
         sc["rep_name"] = str(rng.choice(REP_NAMES))
@@ -410,7 +421,7 @@ def user_prompt(sc):
         if sc.get("reference_number"):
             lines.append(f"Near the end the REP gives reference number {sc['reference_number']} (say it exactly).")
         lines.append("Agent behaviour notes: " + (" ".join(sc["hints"]) if sc["hints"] else
-                     "competent and courteous; verifies, asks the relevant follow-ups, reads the outcome back."))
+                     "competent and courteous; shares only the patient identifiers the rep asks for; asks the relevant follow-ups; reads the outcome back."))
     else:
         lines.append(f"NOT connected. Total duration {sc['duration_seconds']}s. Only IVR/ringing turns, max 4.")
     return "\n".join(lines)

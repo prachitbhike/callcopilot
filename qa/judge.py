@@ -16,7 +16,7 @@ from qa.schemas import AuditSubmission, JudgeResult
 
 load_dotenv()
 load_dotenv(".env.local")
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v3"
 OUT = Path("out")
 RAW = OUT / "judge_raw.jsonl"
 RUBRIC = yaml.safe_load(open("qa/rubric.yaml"))
@@ -26,6 +26,14 @@ SYSTEM = f"""You are a QA auditor for outbound pharmacy, insurance-plan and manu
 
 Defect definitions and severities:
 """ + "\n".join(f"- {c} ({RUBRIC['codes'][c]['severity']}): {RUBRIC['codes'][c]['definition']}" for c in RUBRIC["judge_codes"]) + """
+
+Code boundaries (important):
+- If no REP was ever reached (no REP turns), report FAB_CONTACT only when the form claims contact; do NOT also report STATUS_MISMATCH or MISSING_REF for that call.
+- STATUS_MISMATCH requires a REP turn stating a status that contradicts the form's outcome_status; quote that REP turn.
+- reference_number means: for transfer_confirm_call, the pharmacy Rx number the REP gives; for pa_plan_call / patient_access_check, the call reference / confirmation number the REP gives. Auth numbers and member IDs are never reference numbers.
+- MISSING_REF means the REP offered that reference number and the agent did not capture it (form reference_number empty or different). Evidence for MISSING_REF must quote the REP turn where the number was given; if no number was ever given (e.g. Rx not received), it is not MISSING_REF.
+- outcome_status enums: transfer_confirm_call received = Rx received but not yet filled (any blocker other than PA, e.g. back-order or insurance reject, still counts as received and belongs in notes/next_action), needs_pa = received but blocked on prior authorization, filled, not_received. pa_plan_call approved / denied / pending / not_on_file. patient_access_check enrolled / pending_docs / pending_bv / denied. STATUS_MISMATCH only when the form's enum value contradicts the REP under these definitions.
+- MISSED_NEXT_STEP only when a checklist item that APPLIES to the stated status was neither asked by the agent nor volunteered by the rep. Conditional items: PA_PENDING_DATE only if pending; PA_DENIAL_INFO only if denied; PA_AUTH only if approved; ENR_MISSING_DOCS only if pending_docs; ENR_BV_RESULT only if pending_bv or enrolled; ENR_BRIDGE only if enrolled or pending_bv; TX_RESEND only if not received; TX_BLOCKERS only if received but not filled. Items that do not apply are "na". A wrong next_action on the form is not MISSED_NEXT_STEP.
 
 Quotes must be copied exactly from a single turn (a short contiguous span is best). Keep rationale to 25 words or fewer.
 Report a defect only when the transcript/form evidence supports it; a clean call should have no defects.
@@ -89,13 +97,19 @@ def verify_quote(ev, turns):
 def postprocess(sub: AuditSubmission, call_id, turns, model):
     fails = 0
     keep = []
+    speaker = {t["i"]: t["speaker"] for t in turns}
     for d in sub.defects:
         if d.code not in RUBRIC["judge_codes"]:
             continue
         d.severity = RUBRIC["codes"][d.code]["severity"]
+        if re.match(r"\s*(not applicable|n/?a\b|no defect|none\b)", d.rationale, re.I):
+            continue  # guard: model sometimes lists a defect while saying it does not apply
         if d.evidence.evidence_kind == "quote" and not verify_quote(d.evidence, turns):
             fails += 1
             continue
+        if d.code == "STATUS_MISMATCH" and not (d.evidence.evidence_kind == "quote" and
+                                                 speaker.get(d.evidence.turn) == "REP"):
+            continue  # guard: status mismatch must cite what the rep said
         keep.append(d)
     for c in sub.checklist:
         if c.result == "fail" and c.evidence and c.evidence.evidence_kind == "quote" and not verify_quote(c.evidence, turns):
@@ -115,6 +129,21 @@ def stub_result(call, form):
                        coaching_note="(no-llm stub)", needs_human_review=False, model="stub", prompt_version=PROMPT_VERSION)
 
 
+def _repair(inp):
+    """Sonnet occasionally serialises the whole audit (or a list) as a JSON string inside one field."""
+    for k, v in list(inp.items()):
+        if isinstance(v, str) and v.lstrip()[:1] in "[{":
+            try:
+                parsed = json.loads(v)
+            except ValueError:
+                continue
+            if isinstance(parsed, dict) and k in parsed:
+                inp = {**parsed, **{kk: vv for kk, vv in inp.items() if kk != k}}
+            else:
+                inp[k] = parsed
+    return inp
+
+
 async def judge_one(client, sem, call, turns, form, case, model):
     prompt = build_prompt(call, turns, form, case_public(call, case))
     last = None
@@ -126,7 +155,7 @@ async def judge_one(client, sem, call, turns, form, case, model):
                     tool_choice={"type": "tool", "name": "submit_audit"},
                     messages=[{"role": "user", "content": prompt}])
             block = next(b for b in r.content if b.type == "tool_use")
-            sub = AuditSubmission.model_validate(block.input)
+            sub = AuditSubmission.model_validate(_repair(block.input))
             return postprocess(sub, call["call_id"], turns, model)
         except Exception as e:  # noqa - retry API + validation errors
             last = e
