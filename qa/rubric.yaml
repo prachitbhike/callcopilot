@@ -1,0 +1,82 @@
+version: v1
+score:
+  base: 100
+  weights: {critical: 40, major: 15, minor: 5}
+  human_review_if_any: critical
+
+hold_limits:
+  transfer_confirm_call: 420
+  pa_plan_call: 900
+  patient_access_check: 900
+
+codes:
+  FAB_CONTACT:
+    severity: critical
+    detector: [rules, judge]
+    definition: form spoke_with_rep true (or has rep_name/reference_number) but duration < 30 or transcript has no REP turns
+  STATUS_MISMATCH:
+    severity: critical
+    detector: [judge]
+    definition: form outcome_status contradicts what the REP said (form_check on outcome_status = mismatch)
+  OUTCOME_VS_RX:
+    severity: critical
+    detector: [rules]
+    definition: form outcome_status contradicts case truth as of call_date (explicit mapping table)
+  PHI_DISCLOSURE:
+    severity: critical
+    detector: [judge]
+    definition: agent volunteers full DOB / address / diagnosis / member ID before the rep asks to verify, or shares another patient's details
+  UNPROFESSIONAL:
+    severity: major
+    detector: [judge]
+    definition: rude, sarcastic, interrupts, sighs audibly ("just check again"), hangs up on rep
+  MISSED_NEXT_STEP:
+    severity: major
+    detector: [judge]
+    definition: a required checklist item was available and not asked (e.g. denial -> no appeal deadline asked)
+  MISSING_REF:
+    severity: major
+    detector: [rules, judge]
+    definition: "rules: connected PA/program call, reference_number empty. judge: REP offered a reference # / name and agent did not capture it"
+  HOLD_OVERRUN:
+    severity: minor
+    detector: [rules]
+    definition: duration_seconds > hold_limit + 60
+  REDUNDANT_CALL:
+    severity: minor
+    detector: [rules]
+    definition: case resolved_before_call true, or same case_ref already called earlier that day
+  AFTER_HOURS:
+    severity: minor
+    detector: [rules]
+    definition: et_hour >= 19 or et_hour < 8
+
+judge_codes: [FAB_CONTACT, STATUS_MISMATCH, PHI_DISCLOSURE, UNPROFESSIONAL, MISSED_NEXT_STEP, MISSING_REF]
+
+checklists:
+  all:
+    ID_SELF: identifies self + Forus + on whose behalf
+    MIN_PHI: gives only identifiers the rep asks for
+    RIGHT_PATIENT: confirms patient
+    CAPTURE_REF: gets rep name + reference #
+    READBACK: reads outcome back
+    PROFESSIONAL: courteous, no interrupting, sarcasm or audible frustration
+  pa_plan_call:
+    PA_STATUS: obtains current PA status
+    PA_PENDING_DATE: if pending, asks expected determination date
+    PA_DENIAL_INFO: if denied, asks denial reason + appeal deadline + peer-to-peer availability
+    PA_AUTH: if approved, gets auth # + effective dates
+  patient_access_check:
+    ENR_STATUS: obtains enrollment status
+    ENR_MISSING_DOCS: asks which documents are missing
+    ENR_BV_RESULT: asks benefits-verification result
+    ENR_BRIDGE: asks about bridge / quick-start supply and ship date
+  transfer_confirm_call:
+    TX_RECEIVED: confirms Rx received + pharmacy Rx #
+    TX_BLOCKERS: asks about stock / fill ETA / PA / insurance reject
+    TX_RESEND: "if not received: confirm NPI/fax, request re-send"
+
+outcome_status:
+  pa_plan_call: [approved, denied, pending, not_on_file, no_answer]
+  patient_access_check: [enrolled, pending_docs, pending_bv, denied, no_answer]
+  transfer_confirm_call: [received, not_received, filled, needs_pa, no_answer]

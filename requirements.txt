@@ -1,0 +1,9 @@
+pandas
+openpyxl
+streamlit
+plotly
+anthropic
+pydantic>=2
+pyyaml
+python-dotenv
+scipy
