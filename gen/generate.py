@@ -18,6 +18,7 @@ from qa.llm import sampling_kwargs
 from qa.rules import outcome_consistent, true_status
 
 load_dotenv()
+load_dotenv(".env.local")
 
 DATA = Path("data/calls.xlsx")
 SYN = Path("data/synthetic")

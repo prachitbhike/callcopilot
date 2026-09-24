@@ -15,6 +15,7 @@ from qa.rules import load_inputs
 from qa.schemas import AuditSubmission, JudgeResult
 
 load_dotenv()
+load_dotenv(".env.local")
 PROMPT_VERSION = "v1"
 OUT = Path("out")
 RAW = OUT / "judge_raw.jsonl"

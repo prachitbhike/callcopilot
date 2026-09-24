@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import anthropic
 
 load_dotenv()
+load_dotenv(".env.local")
 
 
 def main():
