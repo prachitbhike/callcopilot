@@ -5,3 +5,5 @@ __pycache__/
 data/calls.xlsx
 .DS_Store
 *.xlsx
+.env.*
+!.env.example

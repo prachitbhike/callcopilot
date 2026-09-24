@@ -1,0 +1,81 @@
+call_id,agent_id,call_type,destination_name,duration_seconds,et_hour,connected,judged,score,n_critical,n_major,n_minor,needs_human_review,codes,form_accuracy,evidence_failures
+2024-08-29 23:35:25.708+00+12082540231+17322547800,AGT-01,transfer_confirm_call,Southwood Pharmacy,8,19,False,True,15,2,0,1,True,AFTER_HOURS;FAB_CONTACT;OUTCOME_VS_RX,0.0,0
+2024-08-04 16:17:13.795+00+12012838683+18004212342,AGT-01,pa_plan_call,Bc/bs Federal Employees,3,12,False,True,20,2,0,0,True,FAB_CONTACT;OUTCOME_VS_RX,0.0,0
+2024-08-13 20:47:51.505+00+12082540231+13037524911,AGT-01,transfer_confirm_call,Walgreens,516,16,True,True,90,0,0,2,False,HOLD_OVERRUN;REDUNDANT_CALL,1.0,0
+2024-08-10 17:09:45.301+00+12082540231+18554274682,AGT-01,transfer_confirm_call,Optum Specialty Pharmacy,565,13,True,True,95,0,0,1,False,HOLD_OVERRUN,1.0,0
+2024-08-10 00:48:12.983+00+12012838683+18667597494,AGT-01,patient_access_check,Skyrizi Bridge,51,20,True,True,15,2,0,1,True,AFTER_HOURS;OUTCOME_VS_RX;STATUS_MISMATCH,0.6,0
+2024-08-10 18:50:54.350+00+12082540231+18008801188,AGT-01,pa_plan_call,Cwa,335,14,True,True,100,0,0,0,False,,1.0,0
+2024-08-04 16:16:06.210+00+12012838683+18007887871,AGT-01,pa_plan_call,Aarp Medicare Pdp,4,12,False,True,100,0,0,0,False,,0.6,0
+2024-08-29 23:14:34.925+00+12012838683+18887689588,AGT-01,patient_access_check,SOTYKTU Start,357,19,True,True,95,0,0,1,False,AFTER_HOURS,1.0,0
+2024-08-14 15:35:34.655+00+12012838683+18888437226,AGT-01,transfer_confirm_call,TheraCom,189,11,True,True,20,2,0,0,True,OUTCOME_VS_RX;STATUS_MISMATCH,0.4,0
+2024-08-13 15:15:41.759+00+12082540231+17184039112,AGT-01,transfer_confirm_call,Walgreens,127,11,True,True,100,0,0,0,False,,1.0,0
+2024-08-23 17:37:13.093+00+12012838683+12028295234,AGT-02,transfer_confirm_call,CVS Pharmacy,13,13,False,True,100,0,0,0,False,,0.8,0
+2024-08-08 18:05:40.354+00+12012838683+15097251151,AGT-02,transfer_confirm_call,Davenport Pharmacy,0,14,False,True,60,1,0,0,True,FAB_CONTACT,0.0,0
+2024-08-30 15:26:46.213+00+12012838683+18008240898,AGT-02,pa_plan_call,Medco Medicare Pdp,901,11,True,True,100,0,0,0,False,,0.8,0
+2024-08-01 18:03:39.510+00+12012838683+18007917658,AGT-02,transfer_confirm_call,Optum Home Delivery,621,14,True,True,95,0,0,1,False,HOLD_OVERRUN,1.0,0
+2024-08-02 00:52:38.425+00+12012838683+17187362200,AGT-02,transfer_confirm_call,City Chemist,23,20,False,True,55,1,0,1,True,AFTER_HOURS;FAB_CONTACT,0.0,0
+2024-08-18 22:03:45.199+00+12012838683+18664098430,AGT-02,pa_plan_call,Husky Health CT,41,18,True,True,100,0,0,0,False,,0.8,0
+2024-08-31 21:27:20.757+00+12012838683+18007979791,AGT-02,pa_plan_call,United Healthcare,63,17,True,True,100,0,0,0,False,,1.0,0
+2024-08-26 17:34:46.843+00+12012838683+18443874936,AGT-02,patient_access_check,Dupixent MyWay Atopic Dermatitis,430,13,True,True,100,0,0,0,False,,1.0,0
+2024-08-22 23:49:35.157+00+12012838683+18667597494,AGT-02,patient_access_check,Skyrizi Bridge,333,19,True,True,95,0,0,1,False,AFTER_HOURS,1.0,0
+2024-08-30 15:59:45.100+00+12012838683+17603844020,AGT-02,transfer_confirm_call,Sav-On Pharmacy,98,11,True,True,100,0,0,0,False,,1.0,0
+2024-08-23 16:23:51.774+00+12082540208+18443874936,AGT-03,patient_access_check,Dupixent MyWay Atopic Dermatitis,10,12,False,True,100,0,0,0,False,,0.6,0
+2024-08-23 17:46:13.349+00+12082540208+18339563376,AGT-03,patient_access_check,Litfulo Start,7,13,False,True,100,0,0,0,False,,0.6,0
+2024-08-29 20:38:57.462+00+12082540208+16095845851,AGT-03,transfer_confirm_call,CVS Pharmacy,424,16,True,True,15,2,0,1,True,OUTCOME_VS_RX;REDUNDANT_CALL;STATUS_MISMATCH,0.6,0
+2024-08-30 19:09:02.740+00+12082540208+18443874936,AGT-03,patient_access_check,Dupixent MyWay Atopic Dermatitis,939,15,True,True,100,0,0,0,False,,1.0,0
+2024-08-27 19:01:28.547+00+12012838683+18007887871,AGT-03,pa_plan_call,Community Health Netwk,1932,15,True,True,80,0,1,1,False,HOLD_OVERRUN;MISSING_REF,0.6,0
+2024-08-29 22:04:57.331+00+12082540208+18008801188,AGT-03,pa_plan_call,Cwa,1444,18,True,True,80,0,1,1,False,HOLD_OVERRUN;MISSING_REF,0.8,0
+2024-08-27 16:30:40.832+00+12012838683+18004212342,AGT-03,pa_plan_call,Bc/bs Federal Employees,463,12,True,True,85,0,1,0,False,MISSED_NEXT_STEP,0.8,0
+2024-08-29 21:21:17.567+00+12082540208+12036588229,AGT-03,transfer_confirm_call,A&S Pharmacy,66,17,True,True,100,0,0,0,False,,1.0,0
+2024-08-28 16:20:33.446+00+12012838683+15125281193,AGT-03,transfer_confirm_call,CVS Pharmacy,146,12,True,True,100,0,0,0,False,,1.0,0
+2024-08-29 19:28:55.474+00+12082540208+12814917551,AGT-03,transfer_confirm_call,CVS Pharmacy,141,15,True,True,95,0,0,1,False,REDUNDANT_CALL,1.0,0
+2024-08-30 20:49:00.085+00+12082540552+16314221912,AGT-04,transfer_confirm_call,CVS Pharmacy,17,16,False,True,100,0,0,0,False,,0.6,0
+2024-08-23 21:16:59.016+00+12082540552+18554274682,AGT-04,transfer_confirm_call,Optum Specialty Pharmacy,11,17,False,True,100,0,0,0,False,,0.6,0
+2024-08-30 14:13:53.268+00+12082540552+18008240898,AGT-04,pa_plan_call,Medco Medicare Pdp,997,10,True,True,95,0,0,1,False,HOLD_OVERRUN,1.0,0
+2024-08-23 16:59:54.099+00+12082540552+15094642791,AGT-04,transfer_confirm_call,Rite Aid Pharmacy,424,12,True,True,100,0,0,0,False,,1.0,0
+2024-08-28 20:00:33.482+00+12082540552+18008801188,AGT-04,pa_plan_call,Cwa,1725,16,True,True,15,2,0,1,True,HOLD_OVERRUN;OUTCOME_VS_RX;STATUS_MISMATCH,0.6,0
+2024-08-26 21:19:39.525+00+12082540552+18004212342,AGT-04,pa_plan_call,Bc/bs Federal Employees,251,17,True,True,100,0,0,0,False,,0.8,0
+2024-08-23 21:17:43.666+00+12082540552+18448258966,AGT-04,patient_access_check,Taltz Bridge,465,17,True,True,85,0,1,0,False,MISSED_NEXT_STEP,0.8,0
+2024-08-22 14:21:23.409+00+12082540552+18002226885,AGT-04,patient_access_check,Skyrizi Patient Assistance,343,10,True,True,85,0,1,0,False,MISSED_NEXT_STEP,1.0,0
+2024-08-27 22:12:51.579+00+12082540552+18007917658,AGT-04,transfer_confirm_call,Optum Home Delivery,228,18,True,True,100,0,0,0,False,,1.0,0
+2024-08-26 20:51:49.256+00+12082540552+19133467405,AGT-04,transfer_confirm_call,Capstone Pharmacy,265,16,True,True,100,0,0,0,False,,1.0,0
+2024-08-07 00:42:41.889+00+12012838683+18664246935,AGT-05,patient_access_check,BIMZELX Bridge,13,20,False,True,95,0,0,1,False,AFTER_HOURS,0.8,0
+2024-08-29 21:39:43.662+00+12012838683+18007979791,AGT-05,pa_plan_call,United Healthcare,9,17,False,True,100,0,0,0,False,,0.8,0
+2024-08-27 22:21:15.138+00+12012838683+17036319440,AGT-05,transfer_confirm_call,CVS Pharmacy,696,18,True,True,80,0,1,1,False,HOLD_OVERRUN;UNPROFESSIONAL,1.0,0
+2024-08-27 18:51:24.387+00+12012838683+15094667461,AGT-05,transfer_confirm_call,Walgreens,426,14,True,True,100,0,0,0,False,,1.0,0
+2024-08-07 00:41:54.628+00+12012838683+13019336165,AGT-05,transfer_confirm_call,Kensington Pharmacy,22,20,False,True,95,0,0,1,False,AFTER_HOURS,0.6,0
+2024-08-07 00:08:11.220+00+12012838683+18008801188,AGT-05,pa_plan_call,Bc/bs Arizona,16,20,False,True,95,0,0,1,False,AFTER_HOURS,0.6,0
+2024-08-15 16:20:42.634+00+12012838683+18004212342,AGT-05,pa_plan_call,,13,12,False,True,100,0,0,0,False,,1.0,0
+2024-08-28 16:39:57.218+00+12012838683+18667597494,AGT-05,patient_access_check,Skyrizi Bridge,343,12,True,True,100,0,0,0,False,,0.8,0
+2024-08-27 22:37:25.302+00+12012838683+14256893735,AGT-05,transfer_confirm_call,Cityscript Pharmacy,133,18,True,True,100,0,0,0,False,,1.0,0
+2024-08-19 18:11:34.360+00+12083913427+18662953015,AGT-05,transfer_confirm_call,Signio Specialty Pharmacy,79,14,True,True,85,0,1,0,False,UNPROFESSIONAL,1.0,0
+2024-08-11 13:02:43.956+00+12082540285+18008087347,AGT-06,pa_plan_call,John Hopkins,14,9,False,True,100,0,0,0,False,,0.6,0
+2024-08-04 16:48:18.625+00+12082540285+18004212342,AGT-06,pa_plan_call,Bc/bs Federal Employees,3,12,False,True,100,0,0,0,False,,0.6,0
+2024-08-16 23:37:25.901+00+12082540285+18882920744,AGT-06,transfer_confirm_call,BioPlus Specialty Pharmacy,965,19,True,True,50,1,0,2,True,AFTER_HOURS;HOLD_OVERRUN;PHI_DISCLOSURE,1.0,0
+2024-08-30 15:57:27.021+00+12082540285+17372209738,AGT-06,transfer_confirm_call,CVS Pharmacy,454,11,True,True,60,1,0,0,True,PHI_DISCLOSURE,1.0,0
+2024-08-20 23:20:44.482+00+12082540285+12087651254,AGT-06,transfer_confirm_call,Walgreens,346,19,True,True,50,1,0,2,True,AFTER_HOURS;PHI_DISCLOSURE;REDUNDANT_CALL,1.0,0
+2024-08-27 15:16:43.881+00+12082540285+18008240898,AGT-06,pa_plan_call,Medco Medicare Pdp,452,11,True,True,60,1,0,0,True,PHI_DISCLOSURE,1.0,0
+2024-08-22 20:20:04.743+00+12082540285+18667597494,AGT-06,patient_access_check,Skyrizi Bridge,24,16,False,True,100,0,0,0,False,,1.0,0
+2024-08-28 16:47:57.468+00+12082540285+18443874936,AGT-06,patient_access_check,Dupixent Bridge,54,12,True,True,100,0,0,0,False,,1.0,0
+2024-08-16 17:45:50.836+00+12082540285+15123392050,AGT-06,transfer_confirm_call,Walmart Pharmacy,189,13,True,True,60,1,0,0,True,PHI_DISCLOSURE,1.0,0
+2024-08-19 22:49:15.248+00+12082540285+18883554191,AGT-06,transfer_confirm_call,Kroger Specialty Pharmacy NOLA,141,18,True,True,100,0,0,0,False,,1.0,0
+2024-08-16 22:24:09.285+00+12082540296+18007917658,AGT-07,transfer_confirm_call,Optum Home Delivery,7,18,False,True,100,0,0,0,False,,0.6,0
+2024-08-09 00:07:10.275+00+12082540296+16093948111,AGT-07,transfer_confirm_call,Siegels Pharmacy,17,20,False,True,95,0,0,1,False,AFTER_HOURS,0.6,0
+2024-08-01 00:45:18.059+00+12082540296+17183992716,AGT-07,transfer_confirm_call,Duane Reade,421,20,True,True,95,0,0,1,False,AFTER_HOURS,1.0,0
+2024-08-08 22:45:01.026+00+12082540296+18774379012,AGT-07,transfer_confirm_call,Elixir Specialty Pharmacy,480,18,True,True,100,0,0,0,False,,1.0,0
+2024-08-03 00:19:26.312+00+12082540296+18448258966,AGT-07,patient_access_check,Taltz Bridge,274,20,True,True,95,0,0,1,False,AFTER_HOURS,0.8,0
+2024-08-09 18:56:27.317+00+12082540296+18007979791,AGT-07,pa_plan_call,United Healthcare,714,14,True,True,100,0,0,0,False,,1.0,0
+2024-08-13 18:35:12.479+00+12012838683+18004212342,AGT-07,pa_plan_call,Advance Rx Mgmt,195,14,True,True,100,0,0,0,False,,1.0,0
+2024-08-06 21:31:33.785+00+12012838683+18007979791,AGT-07,pa_plan_call,United Healthcare,100,17,True,True,100,0,0,0,False,,1.0,0
+2024-08-06 19:14:37.846+00+12012838683+18443874936,AGT-07,patient_access_check,Dupixent Prurigo Nodularis,366,15,True,True,100,0,0,0,False,,0.8,0
+2024-08-16 17:56:09.666+00+12082540296+18882920744,AGT-07,transfer_confirm_call,BioPlus Specialty Pharmacy,181,13,True,True,100,0,0,0,False,,0.8,0
+2024-08-13 20:00:22.932+00+12012838683+15127948227,AGT-08,transfer_confirm_call,HEB Pharmacy Austin,15,16,False,True,100,0,0,0,False,,0.6,0
+2024-08-21 13:47:58.297+00+12012838683+17203701121,AGT-08,transfer_confirm_call,Summit Pharmacy,17,9,False,True,100,0,0,0,False,,0.6,0
+2024-08-21 14:31:42.228+00+12012838683+18554274682,AGT-08,transfer_confirm_call,Optum Specialty Pharmacy,637,10,True,True,95,0,0,1,False,HOLD_OVERRUN,1.0,0
+2024-08-06 21:06:06.981+00+12082540267+17075389275,AGT-08,transfer_confirm_call,Walgreens,425,17,True,True,100,0,0,0,False,,1.0,0
+2024-08-28 13:28:12.906+00+12012838683+18007887871,AGT-08,pa_plan_call,Community Health Netwk,1134,9,True,True,95,0,0,1,False,HOLD_OVERRUN,1.0,0
+2024-08-27 21:29:44.144+00+12012838683+18009137697,AGT-08,pa_plan_call,,65,17,True,True,100,0,0,0,False,,1.0,0
+2024-08-19 14:55:23.921+00+12012838683+18007979791,AGT-08,pa_plan_call,United Healthcare,3,10,False,True,100,0,0,0,False,,0.6,0
+2024-08-12 14:03:52.608+00+12012838683+18448258966,AGT-08,patient_access_check,Taltz Bridge,451,10,True,True,100,0,0,0,False,,1.0,0
+2024-08-19 15:14:01.397+00+12012838683+18558473553,AGT-08,patient_access_check,Opzelura CAP,189,11,True,True,100,0,0,0,False,,1.0,0
+2024-08-07 21:16:25.060+00+12082540267+19133071730,AGT-08,transfer_confirm_call,Apotheco Pharmacy Overland Park,25,17,False,True,100,0,0,0,False,,0.6,0
