@@ -25,3 +25,8 @@
 - Validation universe = judged calls (so partial runs are comparable across layers). Extra outputs:
   `out/validation_summary.json`, `out/agent_validation.csv`.
 - REDUNDANT_CALL ordering within a day uses `hour_of_day` then `call_id` (no minute-level timestamps exist).
+- **Label floor:** seed 42 planted 0 UNPROFESSIONAL and 1 MISSING_REF at the spec's probabilities, leaving those
+  judge codes unmeasurable. The generator now tops up each profile-driven code to >= 2 labels on eligible calls
+  of the matching profile (planted_by=profile).
+- Real data check: `call_id` embeds a precise UTC timestamp, so same-day REDUNDANT_CALL ordering is exact.
+  Picked agents match §3: AGT-01/02 under-20s share 14.5% / 12.6%; ramping AGT-03/04 over-hold ≈ 25%.

@@ -251,6 +251,18 @@ def plant(sample, profiles, cases, rng):
         if p == "solid" and rng.random() < 0.08:
             opts = ["UNPROFESSIONAL", "MISSED_NEXT_STEP"] + (["MISSING_REF"] if pa_prog else [])
             add(r.call_id, str(rng.choice(opts)), "profile")
+    # floor: >= 2 labels per profile-driven code so every judge code is measurable (top up on eligible calls)
+    floors = [("FAB_CONTACT", "logs_without_connecting", lambda r: not r.connected),
+              ("MISSED_NEXT_STEP", "ramping", lambda r: r.connected and r.call_type != "transfer_confirm_call"),
+              ("MISSING_REF", "ramping", lambda r: r.connected and r.call_type != "transfer_confirm_call"),
+              ("UNPROFESSIONAL", "curt", lambda r: r.connected),
+              ("PHI_DISCLOSURE", "phi_oversharer", lambda r: r.connected)]
+    for code, prof, ok in floors:
+        have = {l["call_id"] for l in labels if l["code"] == code}
+        elig = [r.call_id for r in sample.itertuples() if profiles[r.agent_id] == prof and ok(r) and r.call_id not in have]
+        rng.shuffle(elig)
+        for cid in elig[:max(0, 2 - len(have))]:
+            add(cid, code, "profile")
     # global STATUS_MISMATCH on exactly 4 connected calls
     conn = sample[sample.connected]
     w = np.where(conn.agent_id.map(profiles) == "solid", 1.0, 3.0)
