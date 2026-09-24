@@ -1,12 +1,16 @@
 import html
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-SYN, OUT = Path("data/synthetic"), Path("out")
+SYN, OUT = Path(os.environ.get("SYN_DIR", "data/synthetic")), Path(os.environ.get("OUT_DIR", "out"))
+# Held-out set C (seed 11): generated after the prompt was frozen and judged exactly once. Set B (out/holdout, seed 7)
+# was used to tune the MISSED_NEXT_STEP rules between prompt v4 and v6, so it is a dev set, not a test set.
+HOLD_OUT = Path(os.environ.get("HOLDOUT_DIR", "out/holdout_c" if Path("out/holdout_c/validation_summary.json").exists() else "out/holdout"))
 SEV_COLOR = {"critical": "#d62728", "major": "#f0a202", "minor": "#9e9e9e"}
 FIELDS = ["spoke_with_rep", "rep_name", "reference_number", "outcome_status", "next_action"]
 
@@ -19,13 +23,13 @@ def mtime(p):
 
 
 @st.cache_data
-def read_jsonl(path, _m):
+def read_jsonl(path, mtime_key):
     p = Path(path)
     return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
 
 
 @st.cache_data
-def read_csv(path, _m):
+def read_csv(path, mtime_key):
     p = Path(path)
     return pd.read_csv(p, dtype={"call_id": str}) if p.exists() else pd.DataFrame()
 
@@ -67,7 +71,9 @@ with tab_ov:
     c[0].metric("Calls scored", f"{len(scored)}", help=f"{int(scored.judged.sum())} judged by LLM")
     c[1].metric("% calls with a critical", pct((scored.n_critical > 0).mean()))
     c[2].metric("Mean score", f"{scored.score.mean():.1f}")
-    c[3].metric("Form accuracy", pct(scored.form_accuracy.mean()), help="share of form fields the transcript supports")
+    c[3].metric("Form accuracy", pct(scored.form_accuracy.mean()),
+                help="share of verifiable form fields the transcript supports; fields the transcript cannot verify "
+                     "(e.g. outcome on a no-answer call) are excluded")
     c[4].metric("Evidence validity", pct(summary.get("evidence_validity")), help="judge quotes found verbatim in the transcript")
     md = pd.DataFrame([{**m, "call_id": r["call_id"], "call_type": r["call_type"]}
                        for r in results.values() for m in r["merged_defects"]])
@@ -88,7 +94,8 @@ with tab_ov:
 # ---------------------------------------------------------------- Inspector
 with tab_insp:
     s = scored.sort_values(["score", "call_id"])
-    labels = {row.call_id: f"{row.score} · {row.agent_id} · {row.call_type} · {row.destination_name} · "
+    labels = {row.call_id: f"{row.score} · {row.agent_id} · {row.call_type} · "
+                           f"{row.destination_name if isinstance(row.destination_name, str) else 'Unknown destination'} · "
                            f"{row.duration_seconds}s · {row.codes if isinstance(row.codes, str) else '—'}"
               for row in s.itertuples()}
     ids = list(labels)
@@ -149,8 +156,9 @@ with tab_insp:
         rows = []
         for f in FIELDS:
             chk = fc.get(f, {})
+            tv = chk.get("transcript_value")
             rows.append({"field": f, "Agent logged (form)": str(form.get(f)),
-                         "Transcript supports (auto-draft)": chk.get("transcript_value") or "—",
+                         "Transcript supports (auto-draft)": "—" if tv in (None, "", "null") else tv,
                          "System of record (case truth)": truth_col[f], "judge": chk.get("match", "—")})
         diff = pd.DataFrame(rows).set_index("field")
         rule_codes = {m["code"] for m in res["merged_defects"]}
@@ -160,17 +168,24 @@ with tab_insp:
                   (row.name == "spoke_with_rep" and "FAB_CONTACT" in rule_codes)
             return ["background-color:#ffd6d6" if bad else ""] * len(row)
         st.dataframe(diff.style.apply(hl, axis=1), use_container_width=True)
-        st.caption("Middle column = the judge's extraction from the transcript — effectively an auto-drafted form.")
+        filled = sum(1 for f in FIELDS if fc.get(f, {}).get("transcript_value") not in (None, "", "null"))
+        st.caption(f"Middle column = the judge's extraction from the transcript, effectively an auto-drafted form: "
+                   f"{filled}/{len(FIELDS)} fields pre-fillable from this call.")
 
         st.subheader(f"Defects · score {res['score']}")
         if not res["merged_defects"]:
             st.success("No defects.")
         for m in sorted(res["merged_defects"], key=lambda m: ["critical", "major", "minor"].index(m["severity"])):
             q = f"“{html.escape(m['quote'])}”" if m.get("quote") else html.escape(m.get("reason") or "")
+            kind_tag = ("<span style='background:#8a8a8a;color:white;border-radius:4px;padding:1px 6px' "
+                        "title='dialer / workflow flag from call metadata, not agent conduct'>process</span> "
+                        if m.get("kind") == "process" else "")
             st.markdown(f"<span style='background:{SEV_COLOR[m['severity']]};color:white;border-radius:4px;padding:1px 6px'>"
                         f"{m['severity']}</span> <span style='background:#555;color:white;border-radius:4px;padding:1px 6px'>"
-                        f"{m['source']}</span> **{m['code']}** · conf {m.get('confidence', 1):.2f}<br>"
+                        f"{m['source']}</span> {kind_tag}**{m['code']}** · conf {m.get('confidence', 1):.2f}<br>"
                         f"<span style='font-size:0.9em'>{q}</span>", unsafe_allow_html=True)
+        if res.get("agent_score") is not None and res["agent_score"] != res["score"]:
+            st.caption(f"Agent score without process flags: {res['agent_score']}")
         if res.get("checklist"):
             st.subheader("Checklist")
             ck = pd.DataFrame([{"item": c["item_id"], "result": c["result"],
@@ -178,17 +193,29 @@ with tab_insp:
             st.dataframe(ck, hide_index=True, use_container_width=True)
         st.subheader("Coaching note")
         st.info(res.get("coaching_note") or "—")
-        if st.button("Re-run judge live"):
+        if st.button("Re-run judge live", help="Calls the judge again on this call and compares with the cached verdict. "
+                                                "The demo cache is not modified."):
             with st.spinner("Judging…"):
                 try:
-                    from qa import judge, pipeline
-                    judge.judge_call(cid, force=True)
-                    pipeline.rebuild()
-                    st.session_state["selected_call"] = cid
-                    st.cache_data.clear()
-                    st.rerun()
+                    from qa import judge
+                    st.session_state.setdefault("live", {})[cid] = judge.judge_call(cid, force=True, persist=False)
                 except Exception as e:  # noqa
                     st.error(f"Judge call failed: {e}")
+        live = st.session_state.get("live", {}).get(cid)
+        if live:
+            cached = sorted(d["code"] for d in res.get("defects", []))
+            fresh = sorted(d["code"] for d in live["defects"])
+            same = cached == fresh
+            (st.success if same else st.warning)(
+                f"Live re-run · {live['model']} · prompt {live['prompt_version']} · {live.get('latency_s', '?')}s · "
+                f"{live['usage']['input_tokens'] if live.get('usage') else '?'} in / "
+                f"{live['usage']['output_tokens'] if live.get('usage') else '?'} out tokens — "
+                + ("same judge defects as cached: " + (", ".join(fresh) or "none")
+                   if same else f"differs: cached {cached or 'none'} vs live {fresh or 'none'}"))
+            for d in live["defects"]:
+                ev = d["evidence"]
+                st.markdown(f"**{d['code']}** · conf {d['confidence']:.2f} · "
+                            f"{html.escape(ev.get('quote') or '(absence) ' + d['rationale'])}")
     with st.expander("Raw JudgeResult JSON"):
         st.json({k: v for k, v in res.items() if k not in ("rule_flags", "merged_defects")})
 
@@ -201,9 +228,29 @@ with tab_val:
     c[2].metric("Evidence validity", pct(summary.get("evidence_validity")))
     rho = summary.get("spearman_rho")
     c[3].metric("Spearman ρ (profile vs score)", "—" if rho is None else f"{rho:.2f}")
+    st.caption(f"In-sample: {summary.get('calls_evaluated', '—')} calls · judge prompt "
+               f"{', '.join(summary.get('prompt_versions') or ['—'])} · {summary.get('labels_used', '—')} planted labels used, "
+               f"{summary.get('labels_dropped_unmanifested', 0)} excluded because the planted behaviour did not appear in the "
+               f"rendered transcript (verified by gen.verify_labels).")
+    hold_summary = (json.loads((HOLD_OUT / "validation_summary.json").read_text())
+                    if (HOLD_OUT / "validation_summary.json").exists() else {})
+    hold_val = csv("validation.csv", HOLD_OUT)
+    if hold_summary:
+        st.markdown(f"**Held-out set** · {hold_summary.get('calls_evaluated')} calls sampled with a different seed after the prompt "
+                    f"was frozen, judged once with prompt {', '.join(hold_summary.get('prompt_versions') or ['—'])}; "
+                    f"{hold_summary.get('labels_used', '—')} verified labels. A separate dev set was used for tuning (see NOTES.md).")
+        h = st.columns(4)
+        h[0].metric("Critical recall · held-out", pct(hold_summary.get("critical_recall")))
+        h[1].metric("Clean-call FP rate · held-out", pct(hold_summary.get("clean_call_fp_rate")))
+        h[2].metric("Evidence validity · held-out", pct(hold_summary.get("evidence_validity")))
+        rho_h = hold_summary.get("spearman_rho")
+        h[3].metric("Spearman ρ · held-out", "—" if rho_h is None else f"{rho_h:.2f}")
     if not val.empty:
-        view = st.radio("Layer", ["merged", "rules", "judge"], horizontal=True)
-        v = val[val.view == view].drop(columns="view")
+        cols = st.columns(2)
+        view = cols[0].radio("Layer", ["merged", "rules", "judge"], horizontal=True)
+        which = cols[1].radio("Set", ["in-sample", "held-out"], horizontal=True) if not hold_val.empty else "in-sample"
+        src_val = val if which == "in-sample" else hold_val
+        v = src_val[src_val.view == view].drop(columns="view")
         st.dataframe(v.style.apply(lambda r: ["background-color:#ffe5e5" if r.severity == "critical" else ""] * len(r), axis=1)
                      .format({"precision": "{:.2f}", "recall": "{:.2f}", "f1": "{:.2f}"}, na_rep="—"),
                      hide_index=True, use_container_width=True)

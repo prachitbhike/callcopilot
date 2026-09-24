@@ -1,6 +1,7 @@
 """Step 4: precision/recall vs planted labels. python -m qa.validate"""
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -8,8 +9,8 @@ import pandas as pd
 import yaml
 from scipy.stats import spearmanr
 
-SYN = Path("data/synthetic")
-OUT = Path("out")
+SYN = Path(os.environ.get("SYN_DIR", "data/synthetic"))
+OUT = Path(os.environ.get("OUT_DIR", "out"))
 RUBRIC = yaml.safe_load(open("qa/rubric.yaml"))
 SEV = {c: v["severity"] for c, v in RUBRIC["codes"].items()}
 BADNESS = {"solid": 0, "ramping": 1, "curt": 2, "phi_oversharer": 2, "logs_without_connecting": 3}
@@ -38,6 +39,11 @@ def prf(tp, fp, fn):
 def compute():
     results = load_results()
     labels = pd.read_csv(SYN / "labels.csv", dtype={"call_id": str})
+    n_unmanifested = 0
+    if "manifested" in labels.columns:  # gen.verify_labels: planted behaviour absent from the rendered transcript
+        drop = labels.manifested.astype(str).str.lower() == "false"
+        n_unmanifested = int(drop.sum())
+        labels = labels[~drop]
     judged = {r["call_id"] for r in results if r.get("judged")}
     universe = judged or {r["call_id"] for r in results}
     results = [r for r in results if r["call_id"] in universe]
@@ -83,10 +89,17 @@ def compute():
     ag["badness"] = ag.profile.map(BADNESS)
     rho = spearmanr(ag.badness, ag.mean_score).statistic if len(ag) > 2 else np.nan
 
+    usage = [r["usage"] for r in results if r.get("usage")]
     headline = {"calls_evaluated": len(universe), "critical_recall": critical_recall,
                 "judge_critical_recall": judge_crit_recall, "clean_call_fp_rate": clean_fp,
                 "clean_calls": len(clean), "evidence_validity": evidence_validity, "evidence_failures": ev_fail,
-                "judge_defects_total": ev_total, "layer_agreement": agreement, "spearman_rho": rho}
+                "judge_defects_total": ev_total, "layer_agreement": agreement, "spearman_rho": rho,
+                "labels_dropped_unmanifested": n_unmanifested, "labels_used": len(gold),
+                "prompt_versions": sorted({str(r.get("prompt_version")) for r in results if r.get("judged")}),
+                "guard_drops": int(sum(r.get("guard_drops", 0) for r in results)),
+                "mean_input_tokens": float(np.mean([u["input_tokens"] for u in usage])) if usage else None,
+                "mean_output_tokens": float(np.mean([u["output_tokens"] for u in usage])) if usage else None,
+                "mean_latency_s": float(np.mean([r["latency_s"] for r in results if r.get("latency_s")])) if usage else None}
 
     hum = OUT / "human_labels.csv"
     human = None
@@ -110,7 +123,9 @@ def main():
     (OUT / "validation_summary.json").write_text(json.dumps({k: (None if v != v else v) for k, v in h.items()}, indent=1, default=float))
     pd.set_option("display.width", 160)
     print(val[val.view == "merged"].round(2).to_string(index=False))
-    print(f"\ncalls evaluated {h['calls_evaluated']} · critical recall {h['critical_recall']:.2f} "
+    print(f"\nlabels used {h['labels_used']} ({h['labels_dropped_unmanifested']} planted labels dropped: behaviour not in transcript) · "
+          f"prompt {h['prompt_versions']} · guard drops {h['guard_drops']}")
+    print(f"calls evaluated {h['calls_evaluated']} · critical recall {h['critical_recall']:.2f} "
           f"(judge-only criticals {h['judge_critical_recall']:.2f}) · clean-call FP rate {h['clean_call_fp_rate']:.2f} "
           f"({h['clean_calls']} clean) · evidence validity {h['evidence_validity']:.2f} "
           f"({h['evidence_failures']}/{h['judge_defects_total']}) · layer agreement {h['layer_agreement']:.2f}")

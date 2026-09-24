@@ -2,12 +2,14 @@
 import argparse
 import datetime as dt
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
 
-SYN = Path("data/synthetic")
-OUT = Path("out")
+# SYN_DIR / OUT_DIR let the same modules run on a held-out set (data/holdout, out/holdout)
+SYN = Path(os.environ.get("SYN_DIR", "data/synthetic"))
+OUT = Path(os.environ.get("OUT_DIR", "out"))
 
 
 def _d(s):

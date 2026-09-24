@@ -1,0 +1,9 @@
+agent_id,profile,volume,first_date,under20_share,over_hold_share
+AGT-01,logs_without_connecting,242,2024-08-02,0.145,0.045
+AGT-02,logs_without_connecting,620,2024-08-01,0.126,0.115
+AGT-03,ramping,171,2024-08-20,0.029,0.246
+AGT-04,ramping,150,2024-08-20,0.04,0.247
+AGT-05,curt,823,2024-08-01,0.096,0.079
+AGT-06,phi_oversharer,610,2024-08-03,0.079,0.126
+AGT-07,solid,593,2024-08-01,0.084,0.076
+AGT-08,solid,578,2024-08-05,0.057,0.161

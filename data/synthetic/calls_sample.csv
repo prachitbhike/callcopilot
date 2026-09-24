@@ -45,7 +45,7 @@ call_id,reasons,call_date,hour_of_day,duration_seconds,destination,destination_n
 2024-08-27 18:51:24.387+00+12012838683+15094667461,transfer_confirm_call,2024-08-27,18:00:00,426,5094667461,Walgreens,0.0,14,transfer_confirm_call,420,AGT-05,True,RX-37961
 2024-08-07 00:41:54.628+00+12012838683+13019336165,transfer_confirm_call,2024-08-07,00:00:00,22,3019336165,Kensington Pharmacy,0.0,20,transfer_confirm_call,420,AGT-05,False,RX-33085
 2024-08-07 00:08:11.220+00+12012838683+18008801188,pa_plan_call,2024-08-07,00:00:00,16,8008801188,Bc/bs Arizona,1.0,20,pa_plan_call,900,AGT-05,False,PA-2418
-2024-08-15 16:20:42.634+00+12012838683+18004212342,pa_plan_call,2024-08-15,16:00:00,13,8004212342,,,12,pa_plan_call,900,AGT-05,False,PA-4246
+2024-08-15 16:20:42.634+00+12012838683+18004212342,pa_plan_call,2024-08-15,16:00:00,13,8004212342,Unknown destination,,12,pa_plan_call,900,AGT-05,False,PA-4246
 2024-08-28 16:39:57.218+00+12012838683+18667597494,patient_access_check,2024-08-28,16:00:00,343,8667597494,Skyrizi Bridge,1.0,12,patient_access_check,900,AGT-05,True,ENR-2066
 2024-08-27 22:37:25.302+00+12012838683+14256893735,transfer_confirm_call,2024-08-27,22:00:00,133,4256893735,Cityscript Pharmacy,0.0,18,transfer_confirm_call,420,AGT-05,True,RX-37084
 2024-08-19 18:11:34.360+00+12083913427+18662953015,transfer_confirm_call,2024-08-19,18:00:00,79,8662953015,Signio Specialty Pharmacy,1.0,14,transfer_confirm_call,420,AGT-05,True,RX-21155
@@ -74,7 +74,7 @@ call_id,reasons,call_date,hour_of_day,duration_seconds,destination,destination_n
 2024-08-21 14:31:42.228+00+12012838683+18554274682,transfer_confirm_call,2024-08-21,14:00:00,637,8554274682,Optum Specialty Pharmacy,1.0,10,transfer_confirm_call,420,AGT-08,True,RX-36205
 2024-08-06 21:06:06.981+00+12082540267+17075389275,transfer_confirm_call,2024-08-06,21:00:00,425,7075389275,Walgreens,0.0,17,transfer_confirm_call,420,AGT-08,True,RX-32325
 2024-08-28 13:28:12.906+00+12012838683+18007887871,pa_plan_call,2024-08-28,13:00:00,1134,8007887871,Community Health Netwk,0.0,9,pa_plan_call,900,AGT-08,True,PA-8142
-2024-08-27 21:29:44.144+00+12012838683+18009137697,pa_plan_call,2024-08-27,21:00:00,65,8009137697,,0.0,17,pa_plan_call,900,AGT-08,True,PA-1438
+2024-08-27 21:29:44.144+00+12012838683+18009137697,pa_plan_call,2024-08-27,21:00:00,65,8009137697,Unknown destination,0.0,17,pa_plan_call,900,AGT-08,True,PA-1438
 2024-08-19 14:55:23.921+00+12012838683+18007979791,pa_plan_call,2024-08-19,14:00:00,3,8007979791,United Healthcare,1.0,10,pa_plan_call,900,AGT-08,False,PA-9169
 2024-08-12 14:03:52.608+00+12012838683+18448258966,patient_access_check,2024-08-12,14:00:00,451,8448258966,Taltz Bridge,,10,patient_access_check,900,AGT-08,True,ENR-1266
 2024-08-19 15:14:01.397+00+12012838683+18558473553,patient_access_check,2024-08-19,15:00:00,189,8558473553,Opzelura CAP,1.0,11,patient_access_check,900,AGT-08,True,ENR-5040

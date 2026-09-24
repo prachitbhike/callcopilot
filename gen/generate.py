@@ -21,7 +21,7 @@ load_dotenv()
 load_dotenv(".env.local")
 
 DATA = Path("data/calls.xlsx")
-SYN = Path("data/synthetic")
+SYN = Path(os.environ.get("SYN_DIR", "data/synthetic"))  # SYN_DIR=data/holdout for the held-out set
 HOLD = {"transfer_confirm_call": 420, "pa_plan_call": 900, "patient_access_check": 900}
 PROFILE_ORDER = ["logs_without_connecting"] * 2 + ["ramping"] * 2 + ["curt", "phi_oversharer"] + ["solid"] * 2
 AGENT_NAMES = ["Jo", "Ravi", "Mica", "Anjali", "Paolo", "Rhea", "Carlo", "Nina", "Sam", "Tess"]
@@ -88,6 +88,7 @@ def load():
     rx = pd.read_excel(DATA, sheet_name="Prescriptions Transferred")
     calls.columns = [c.strip() for c in calls.columns]
     rx.columns = [c.strip() for c in rx.columns]
+    calls["destination_name"] = calls["destination_name"].fillna("Unknown destination")
     calls["call_id"] = calls["call_id"].astype(str)
     calls["call_date"] = pd.to_datetime(calls["call_date"]).dt.date
     calls["hour"] = calls["hour_of_day"].map(to_hour)
@@ -156,6 +157,16 @@ def fake_patient(rng):
 
 def d(x):
     return x.isoformat() if x else None
+
+
+def spoken(v):
+    """ISO date -> how a person says it on the phone (used by the template renderer)."""
+    if isinstance(v, str) and len(v) == 10 and v[4] == v[7] == "-":
+        try:
+            return dt.date.fromisoformat(v).strftime("%B %-d, %Y")
+        except ValueError:
+            return v
+    return v
 
 
 def make_case(row, rx, rng, used_erx):
@@ -394,6 +405,8 @@ The AGENT is an offshore BPO caller working for Forus, calling on behalf of a pr
 The REP is an employee of the insurance plan, manufacturer patient-support hub, or pharmacy being called.
 IVR lines must be realistic for the destination (menus, "your call may be recorded", hold messages).
 Keep it clean, professional-sounding and non-cartoonish. Roughly one turn per 8-10 seconds of talk time.
+Speak dates and dates of birth the way people do on the phone ("August 26th", "December 21st, 1985"), never in
+ISO or numeric-only form.
 Speakers are exactly AGENT, REP or IVR. t_sec is seconds from dial, non-decreasing, and never above the
 call duration. Never name, label or allude to any quality problem or defect; just render what happens.
 If the call is not connected, produce ONLY IVR / ringing lines (speaker IVR, at most 4 turns, no REP, no AGENT
@@ -420,6 +433,9 @@ def user_prompt(sc):
                   "rep_truth accurately (use the exact dates / numbers given)."]
         if sc.get("reference_number"):
             lines.append(f"Near the end the REP gives reference number {sc['reference_number']} (say it exactly).")
+        rx = sc["rep_truth"].get("pharmacy_rx_number")
+        if rx and "MISSED_NEXT_STEP" not in sc["planted"]:
+            lines.append(f"When confirming receipt the REP states the pharmacy Rx number {rx} (say it exactly).")
         lines.append("Agent behaviour notes: " + (" ".join(sc["hints"]) if sc["hints"] else
                      "competent and courteous; shares only the patient identifiers the rep asks for; asks the relevant follow-ups; reads the outcome back."))
     else:
@@ -447,6 +463,9 @@ def validate(sc, turns):
             return "rep name missing"
         if sc.get("reference_number") and sc["reference_number"] not in text:
             return "reference number missing"
+        rx = sc["rep_truth"].get("pharmacy_rx_number")
+        if rx and "MISSED_NEXT_STEP" not in sc["planted"] and rx not in text:
+            return "pharmacy rx number missing"
     return None
 
 
@@ -458,6 +477,7 @@ def template(sc):
             turns.append((min(dur, 8), "IVR", f"Thank you for calling {sc['destination_name']}. Our office is currently closed. Please call back during normal business hours."))
         return [{"i": i, "t_sec": t, "speaker": s, "text": x} for i, (t, s, x) in enumerate(turns)]
     rt, c, p = sc["rep_truth"], sc["case"], sc["case"]["patient"]
+    dob = spoken(p["dob"])
     t0 = sc["ivr_s"] + sc["hold_s"]
     step = max(3, sc["talk_s"] // 12)
     who = sc["agent_name"]
@@ -466,15 +486,15 @@ def template(sc):
     L = [("IVR", f"Thank you for calling {sc['destination_name']}. This call may be recorded. Please hold for the next available representative.")]
     L.append(("REP", f"Thank you for holding, this is {sc['rep_name']}, how can I help you?"))
     if "full date of birth" in hints:
-        L.append(("AGENT", f"Hi, this is {who} from Forus on behalf of {prescriber}'s office. Patient is {p['first']} {p['last']}, date of birth {p['dob']}, lives at {p['address']}, diagnosed with {c['diagnosis']}."))
+        L.append(("AGENT", f"Hi, this is {who} from Forus on behalf of {prescriber}'s office. Patient is {p['first']} {p['last']}, date of birth {dob}, lives at {p['address']}, diagnosed with {c['diagnosis']}."))
     else:
         L.append(("AGENT", f"Hi {sc['rep_name']}, this is {who} calling from Forus on behalf of {prescriber}'s office about a patient."))
     L.append(("REP", "Sure, can I have the patient's name and date of birth?"))
-    L.append(("AGENT", f"{p['first']} {p['last']}, {p['dob']}."))
+    L.append(("AGENT", f"{p['first']} {p['last']}, {dob}."))
     if "sighs" in hints:
         L.append(("AGENT", "*sighs* This is the third time I'm calling, just check again."))
     L.append(("REP", f"Thank you. I see it. {rt.get('say') or ('Status is ' + rt['status'].replace('_', ' ') + '.')} " +
-              " ".join(f"{k.replace('_', ' ')}: {v}." for k, v in rt.items() if k not in ('status', 'say'))))
+              " ".join(f"{k.replace('_', ' ')}: {spoken(v)}." for k, v in rt.items() if k not in ('status', 'say'))))
     if "without asking" not in hints:
         L.append(("AGENT", f"Just to confirm, the status is {rt['status'].replace('_', ' ')}. Anything else needed from the office?"))
         L.append(("REP", "No, that's everything."))
@@ -488,8 +508,35 @@ def template(sc):
     return out
 
 
+def reconcile_forms():
+    """A connected transfer form can only hold the pharmacy Rx number if the REP actually said it (the LLM renderer
+    may leave it out); fabricated-contact forms (no REP turns) are meant to be inconsistent and are left alone."""
+    tx = {}
+    for line in (SYN / "transcripts.jsonl").read_text().splitlines():
+        if line.strip():
+            o = json.loads(line)
+            tx[o["call_id"]] = o["turns"]
+    forms = [json.loads(l) for l in (SYN / "forms.jsonl").read_text().splitlines() if l.strip()]
+    changed = 0
+    for f in forms:
+        turns = tx.get(f["call_id"])
+        if f["call_type"] != "transfer_confirm_call" or not f.get("reference_number") or turns is None:
+            continue
+        if not any(t["speaker"] == "REP" for t in turns):
+            continue
+        rep = " ".join(t["text"] for t in turns if t["speaker"] == "REP")
+        if f["reference_number"] not in rep:
+            f["notes"] = f["notes"].replace(f" Ref {f['reference_number']}.", "")
+            f["reference_number"] = None
+            changed += 1
+    with open(SYN / "forms.jsonl", "w") as fh:
+        for f in forms:
+            fh.write(json.dumps(f, default=str) + "\n")
+    print(f"forms reconciled with transcripts: {changed} transfer form(s) dropped an Rx number the REP never spoke")
+
+
 async def render_one(client, sem, sc, model):
-    for attempt in range(2):
+    for attempt in range(3):
         for k in range(3):
             try:
                 async with sem:
@@ -511,7 +558,7 @@ async def render_one(client, sem, sc, model):
     return template(sc), "template(invalid)"
 
 
-async def render_all(scen, limit, no_llm, force):
+async def render_all(scen, limit, no_llm, force, rerender=()):
     path = SYN / "transcripts.jsonl"
     done = {}
     if path.exists() and not force:
@@ -519,6 +566,12 @@ async def render_all(scen, limit, no_llm, force):
             if line.strip():
                 o = json.loads(line)
                 done[o["call_id"]] = o
+    if rerender:  # drop the named calls and rewrite the kept transcripts; the re-rendered ones are appended below
+        for cid in rerender:
+            done.pop(cid, None)
+        with open(path, "w") as fh:
+            for o in done.values():
+                fh.write(json.dumps(o) + "\n")
     todo = [s for s in scen if s["call_id"] not in done]
     if limit:
         todo = todo[:limit]
@@ -553,13 +606,19 @@ def main():
     ap.add_argument("--limit", type=int)
     ap.add_argument("--no-llm", action="store_true")
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--exclude", help="CSV with call_ids to keep out of the sampling pool (held-out generation)")
+    ap.add_argument("--rerender", help="comma-separated call_ids whose transcripts should be rendered again")
     a = ap.parse_args()
     rng = np.random.default_rng(a.seed)
     random.seed(a.seed)
     SYN.mkdir(parents=True, exist_ok=True)
 
     calls, rx = load()
-    st = agent_stats(calls)
+    st = agent_stats(calls)  # profiles are picked on the full log, before any exclusion
+    if a.exclude:
+        excl = set(pd.read_csv(a.exclude, dtype={"call_id": str}).call_id)
+        calls = calls[~calls.call_id.isin(excl)]
+        print(f"excluded {len(excl)} call_ids from the sampling pool (held-out mode)")
     emails = pick_profiles(st)[: a.n_agents]
     agent_ids = [f"AGT-{i + 1:02d}" for i in range(len(emails))]
     email2id = dict(zip(emails, agent_ids))
@@ -630,8 +689,12 @@ def main():
     print("labels by agent:\n" + labels.merge(sample[["call_id", "agent_id"]]).pivot_table(
         index="agent_id", columns="code", values="call_id", aggfunc="count", fill_value=0).to_string())
 
-    src = asyncio.run(render_all(scen, a.limit, a.no_llm, a.force))
+    src = asyncio.run(render_all(scen, a.limit, a.no_llm, a.force,
+                                 rerender=[c for c in (a.rerender or "").split(",") if c]))
     print(f"transcripts: {src}")
+    reconcile_forms()
+    from gen.verify_labels import run as verify_labels
+    verify_labels(SYN)
 
 
 if __name__ == "__main__":

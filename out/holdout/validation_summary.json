@@ -1,0 +1,21 @@
+{
+ "calls_evaluated": 80,
+ "critical_recall": 1.0,
+ "judge_critical_recall": 1.0,
+ "clean_call_fp_rate": 0.15,
+ "clean_calls": 40,
+ "evidence_validity": 1.0,
+ "evidence_failures": 0,
+ "judge_defects_total": 30,
+ "layer_agreement": 1.0,
+ "spearman_rho": -0.7319250547114,
+ "labels_dropped_unmanifested": 3,
+ "labels_used": 57,
+ "prompt_versions": [
+  "v5"
+ ],
+ "guard_drops": 1,
+ "mean_input_tokens": 4945.125,
+ "mean_output_tokens": 1219.1625,
+ "mean_latency_s": 9.39675
+}
