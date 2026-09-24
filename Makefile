@@ -1,6 +1,6 @@
 PY := .venv/bin/python
 
-.PHONY: data rules judge validate app demo verify holdout
+.PHONY: data rules judge validate app demo verify holdout coach stability
 
 data:
 	$(PY) -m gen.generate
@@ -29,3 +29,9 @@ holdout:
 	$(HOLD) $(PY) -m gen.generate --seed 7 --exclude data/synthetic/calls_sample.csv
 	$(HOLD) $(PY) -m qa.pipeline
 	$(HOLD) $(PY) -m qa.validate
+
+coach:
+	$(PY) -m qa.coach
+
+stability:
+	$(PY) -m qa.validate --stability 15 --runs 3

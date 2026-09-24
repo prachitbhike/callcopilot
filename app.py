@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import yaml
 
 SYN, OUT = Path(os.environ.get("SYN_DIR", "data/synthetic")), Path(os.environ.get("OUT_DIR", "out"))
 # Held-out set C (seed 11): generated after the prompt was frozen and judged exactly once. Set B (out/holdout, seed 7)
@@ -58,7 +59,15 @@ if scored.empty:
     st.error("No scored calls yet — run `make demo`.")
     st.stop()
 
-tab_ov, tab_insp, tab_val = st.tabs(["Overview", "Call Inspector", "Validation"])
+PAGES = ["Overview", "Call Inspector", "Agents", "Review Queue", "Validation"]
+st.session_state.setdefault("nav", "Overview")
+nav = st.radio("View", PAGES, key="nav", horizontal=True, label_visibility="collapsed")
+
+
+def open_call(cid):
+    st.session_state["selected_call"] = cid
+    st.session_state["insp_call"] = cid
+    st.session_state["nav"] = "Call Inspector"
 
 
 def pct(x):
@@ -66,7 +75,7 @@ def pct(x):
 
 
 # ---------------------------------------------------------------- Overview
-with tab_ov:
+if nav == "Overview":
     c = st.columns(5)
     c[0].metric("Calls scored", f"{len(scored)}", help=f"{int(scored.judged.sum())} judged by LLM")
     c[1].metric("% calls with a critical", pct((scored.n_critical > 0).mean()))
@@ -82,17 +91,17 @@ with tab_ov:
         cnt = md.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
         fig = px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
                      title="Defects by code", category_orders={"code": cnt.code.tolist()})
-        l.plotly_chart(fig, use_container_width=True)
+        l.plotly_chart(fig, width="stretch")
         src = md.groupby(["code", "source"]).size().reset_index(name="n")
     crit = scored.assign(crit=scored.n_critical > 0).groupby("call_type").crit.mean().reset_index()
     fig2 = px.bar(crit, x="call_type", y="crit", title="Critical rate by call type", color_discrete_sequence=["#d62728"])
     fig2.update_yaxes(tickformat=".0%", title=None)
-    r.plotly_chart(fig2, use_container_width=True)
+    r.plotly_chart(fig2, width="stretch")
     st.caption(f"Layer agreement (rules ∩ judge on FAB_CONTACT / MISSING_REF): {pct(summary.get('layer_agreement'))} · "
                f"calls needing human review: {int(scored.needs_human_review.sum())}")
 
 # ---------------------------------------------------------------- Inspector
-with tab_insp:
+if nav == "Call Inspector":
     s = scored.sort_values(["score", "call_id"])
     labels = {row.call_id: f"{row.score} · {row.agent_id} · {row.call_type} · "
                            f"{row.destination_name if isinstance(row.destination_name, str) else 'Unknown destination'} · "
@@ -100,7 +109,9 @@ with tab_insp:
               for row in s.itertuples()}
     ids = list(labels)
     default = ids.index(st.session_state["selected_call"]) if st.session_state.get("selected_call") in ids else 0
-    cid = st.selectbox("Call (lowest score first)", ids, index=default, format_func=labels.get)
+    if st.session_state.get("insp_call") not in ids:
+        st.session_state["insp_call"] = ids[default]
+    cid = st.selectbox("Call (lowest score first)", ids, key="insp_call", format_func=labels.get)
     res, call = results[cid], sample[sample.call_id == cid].iloc[0]
     form, case = forms[cid], cases[call.case_ref]
     turns = tx.get(cid, [])
@@ -167,7 +178,7 @@ with tab_insp:
             bad = row["judge"] == "mismatch" or (row.name == "outcome_status" and "OUTCOME_VS_RX" in rule_codes) or \
                   (row.name == "spoke_with_rep" and "FAB_CONTACT" in rule_codes)
             return ["background-color:#ffd6d6" if bad else ""] * len(row)
-        st.dataframe(diff.style.apply(hl, axis=1), use_container_width=True)
+        st.dataframe(diff.style.apply(hl, axis=1), width="stretch")
         filled = sum(1 for f in FIELDS if fc.get(f, {}).get("transcript_value") not in (None, "", "null"))
         st.caption(f"Middle column = the judge's extraction from the transcript, effectively an auto-drafted form: "
                    f"{filled}/{len(FIELDS)} fields pre-fillable from this call.")
@@ -190,7 +201,7 @@ with tab_insp:
             st.subheader("Checklist")
             ck = pd.DataFrame([{"item": c["item_id"], "result": c["result"],
                                 "evidence": (c.get("evidence") or {}).get("quote") or ""} for c in res["checklist"]])
-            st.dataframe(ck, hide_index=True, use_container_width=True)
+            st.dataframe(ck, hide_index=True, width="stretch")
         st.subheader("Coaching note")
         st.info(res.get("coaching_note") or "—")
         if st.button("Re-run judge live", help="Calls the judge again on this call and compares with the cached verdict. "
@@ -219,8 +230,105 @@ with tab_insp:
     with st.expander("Raw JudgeResult JSON"):
         st.json({k: v for k, v in res.items() if k not in ("rule_flags", "merged_defects")})
 
+# ---------------------------------------------------------------- Agents
+if nav == "Agents":
+    rows = []
+    for ag, g in scored.groupby("agent_id"):
+        codes = pd.Series([c for cs in g.codes.dropna() for c in cs.split(";")])
+        rows.append({"agent_id": ag, "calls": len(g), "mean_score": round(g.score.mean(), 1),
+                     "criticals_per_100": round(100 * g.n_critical.sum() / len(g), 1),
+                     "top_defect": codes.value_counts().index[0] if len(codes) else "—",
+                     "pct_needing_review": f"{g.needs_human_review.mean():.0%}",
+                     "form_accuracy": f"{g.form_accuracy.mean():.0%}"})
+    agt = pd.DataFrame(rows).sort_values(["criticals_per_100", "mean_score"], ascending=[False, True])
+    st.dataframe(agt, hide_index=True, width="stretch")
+    with st.expander("Ground truth (synthetic)"):
+        st.dataframe(csv("agent_profiles.csv", SYN), hide_index=True, width="stretch")
+
+    ag = st.selectbox("Agent", agt.agent_id.tolist())
+    g = scored[scored.agent_id == ag]
+    l, r = st.columns([1, 1])
+    with l:
+        mix = pd.DataFrame([{"code": m["code"], "severity": m["severity"]}
+                            for c in g.call_id for m in results[c]["merged_defects"]])
+        if mix.empty:
+            st.success("No defects for this agent.")
+        else:
+            cnt = mix.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
+            st.plotly_chart(px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
+                                   title=f"{ag} defect mix", category_orders={"code": cnt.code.tolist()}),
+                            width="stretch")
+        st.markdown("**3 worst calls**")
+        for row in g.sort_values("score").head(3).itertuples():
+            st.button(f"{row.score} · {row.call_type} · {row.destination_name} · {row.codes if isinstance(row.codes, str) else '—'}",
+                      key=f"worst_{row.call_id}", on_click=open_call, args=(row.call_id,))
+    with r:
+        from qa import coach
+        card = coach.load_cards().get(ag)
+        if st.button("Draft coaching card" if card is None else "Re-draft coaching card"):
+            with st.spinner("Drafting…"):
+                try:
+                    card = coach.draft_card(ag, list(results.values()), force=card is not None)
+                except Exception as e:  # noqa
+                    st.error(f"Coach call failed: {e}")
+        if card:
+            st.markdown(f"#### Coaching card · {ag}")
+            st.markdown("**Strengths**\n" + "\n".join(f"- {s}" for s in card["strengths"]))
+            st.markdown("**Fix next**")
+            for f in card["fix"]:
+                st.markdown(f"- **{f['behaviour']}**  \n  > {f['quote']}  \n  _{f['why_it_matters']}_")
+            st.info(f"Practice line: {card['practice_line']}")
+
+# ---------------------------------------------------------------- Review queue
+if nav == "Review Queue":
+    import datetime as _dt
+    HL = OUT / "human_labels.csv"
+    done = csv("human_labels.csv")
+    reviewed = set(zip(done.call_id, done.code)) if not done.empty else set()
+    reviewer = st.text_input("Reviewer", value=st.session_state.get("reviewer", "qa-lead"), key="reviewer")
+    all_codes = list(yaml.safe_load(open("qa/rubric.yaml"))["codes"])
+    queue = []
+    for cid in scored[scored.needs_human_review].call_id:
+        ms = results[cid]["merged_defects"]
+        queue.append((-sum(m["severity"] == "critical" for m in ms), min([m.get("confidence", 1) for m in ms] or [1]), cid))
+    queue.sort()
+    pending = sum((cid, m["code"]) not in reviewed for _, _, cid in queue for m in results[cid]["merged_defects"]
+                  if m["severity"] in ("critical", "major"))
+    st.caption(f"{len(queue)} calls need review · {pending} critical/major defects not yet reviewed · "
+               f"{len(reviewed)} verdicts recorded → out/human_labels.csv")
+
+    def record(cid, code, verdict, new_code=None):
+        row = pd.DataFrame([{"call_id": cid, "code": code, "verdict": verdict, "new_code": new_code,
+                             "reviewer": st.session_state.get("reviewer", ""), "ts": _dt.datetime.now().isoformat(timespec="seconds")}])
+        row.to_csv(HL, mode="a", header=not HL.exists(), index=False)
+
+    for _, _, cid in queue:
+        r_ = results[cid]
+        with st.container(border=True):
+            st.markdown(f"**{r_['score']}** · {r_['agent_id']} · {r_['call_type']} · {r_['duration_seconds']}s")
+            st.button("Open in Inspector", key=f"open_{cid}", on_click=open_call, args=(cid,))
+            for m in sorted(r_["merged_defects"], key=lambda m: ["critical", "major", "minor"].index(m["severity"])):
+                if m["severity"] == "minor":
+                    continue
+                k = f"{cid}|{m['code']}"
+                cols = st.columns([4, 1, 1, 2])
+                q = m.get("quote") or m.get("reason") or ""
+                cols[0].markdown(f"<span style='background:{SEV_COLOR[m['severity']]};color:white;border-radius:4px;padding:1px 6px'>"
+                                 f"{m['code']}</span> <small>{m['source']} · conf {m.get('confidence', 1):.2f}</small><br>"
+                                 f"<small>{html.escape(q)}</small>", unsafe_allow_html=True)
+                if (cid, m["code"]) in reviewed:
+                    v = done[(done.call_id == cid) & (done.code == m["code"])].iloc[-1]
+                    cols[1].markdown(f"✅ {v.verdict}" + (f" → {v.new_code}" if isinstance(v.new_code, str) else ""))
+                    continue
+                cols[1].button("Confirm", key=f"c_{k}", on_click=record, args=(cid, m["code"], "confirm"))
+                cols[2].button("Reject", key=f"r_{k}", on_click=record, args=(cid, m["code"], "reject"))
+                nc = cols[3].selectbox("Change code", ["—"] + [c for c in all_codes if c != m["code"]], key=f"s_{k}",
+                                       label_visibility="collapsed")
+                if nc != "—":
+                    cols[3].button(f"Change → {nc}", key=f"x_{k}", on_click=record, args=(cid, m["code"], "change", nc))
+
 # ---------------------------------------------------------------- Validation
-with tab_val:
+if nav == "Validation":
     val = csv("validation.csv")
     c = st.columns(4)
     c[0].metric("Critical recall", pct(summary.get("critical_recall")))
@@ -253,10 +361,23 @@ with tab_val:
         v = src_val[src_val.view == view].drop(columns="view")
         st.dataframe(v.style.apply(lambda r: ["background-color:#ffe5e5" if r.severity == "critical" else ""] * len(r), axis=1)
                      .format({"precision": "{:.2f}", "recall": "{:.2f}", "f1": "{:.2f}"}, na_rep="—"),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
     st.subheader("Agents — hidden ground truth")
     ag = csv("agent_validation.csv")
     if not ag.empty:
-        st.dataframe(ag.round(1), hide_index=True, use_container_width=True)
+        st.dataframe(ag.round(1), hide_index=True, width="stretch")
+    hl = csv("human_labels.csv")
+    if not hl.empty:
+        st.subheader("Judge vs human reviewers")
+        hl = hl.drop_duplicates(["call_id", "code"], keep="last")
+        src = {(r["call_id"], m["code"]): m["source"] for r in results.values() for m in r["merged_defects"]}
+        hl["source"] = [src.get((c, k), "?") for c, k in zip(hl.call_id, hl.code)]
+        agree = hl.groupby("code").agg(reviewed=("verdict", "size"), confirmed=("verdict", lambda v: (v == "confirm").sum()),
+                                       rejected=("verdict", lambda v: (v == "reject").sum()),
+                                       recoded=("verdict", lambda v: (v == "change").sum())).reset_index()
+        agree["agreement"] = (agree.confirmed / agree.reviewed).map("{:.0%}".format)
+        st.dataframe(agree, hide_index=True, width="stretch")
+        st.caption(f"{len(hl)} verdicts · overall agreement {(hl.verdict == 'confirm').mean():.0%}. "
+                   "Confirmed verdicts become the golden set.")
     st.caption("Planted-defect recall is a unit test, not proof: transcripts are cleaner than real ASR and rule-derived "
                "codes are true by construction. Next: 300-call human golden set.")

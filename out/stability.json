@@ -1,0 +1,15 @@
+{
+ "calls": 15,
+ "runs": 3,
+ "judge_code_decisions": 4,
+ "identical_code_decisions": 0.5,
+ "calls_with_identical_defect_sets": 0.8666666666666667,
+ "mean_score_std": 0.9428090415820634,
+ "max_score_std": 7.0710678118654755,
+ "model": "claude-sonnet-5",
+ "prompt_version": "v3",
+ "checklist_items_identical": 0.9861111111111112,
+ "checklist_items": 144,
+ "form_fields_identical": 0.88,
+ "form_fields": 75
+}

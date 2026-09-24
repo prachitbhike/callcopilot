@@ -5,10 +5,13 @@ import os
 from pathlib import Path
 
 import numpy as np
+from dotenv import load_dotenv
 import pandas as pd
 import yaml
 from scipy.stats import spearmanr
 
+load_dotenv()
+load_dotenv(".env.local")
 SYN = Path(os.environ.get("SYN_DIR", "data/synthetic"))
 OUT = Path(os.environ.get("OUT_DIR", "out"))
 RUBRIC = yaml.safe_load(open("qa/rubric.yaml"))
@@ -112,11 +115,77 @@ def compute():
     return val, headline, ag, human
 
 
+def stability(n, runs, seed=7):
+    """Re-judge n random calls `runs` times (no cache writes); report decision agreement + score std-dev."""
+    import asyncio
+    import os
+    import random
+    from anthropic import AsyncAnthropic
+    from qa import judge
+    from qa.llm import client_kwargs
+    from qa.pipeline import merge
+    from qa.rules import load_inputs, run_rules
+
+    sample, forms, cases, tx = load_inputs()
+    flags = run_rules(sample, forms, cases, tx)
+    calls = {r["call_id"]: r for r in sample.to_dict("records")}
+    ids = random.Random(seed).sample(sorted(calls), n)
+    model = os.environ["JUDGE_MODEL"]
+
+    async def go():
+        client, sem = AsyncAnthropic(**client_kwargs()), asyncio.Semaphore(8)
+
+        async def one(cid):
+            c = calls[cid]
+            r = await judge.judge_one(client, sem, c, tx[cid], forms[cid], cases[c["case_ref"]], model)
+            return cid, r.model_dump()
+        return [dict(await asyncio.gather(*(one(c) for c in ids))) for _ in range(runs)]
+
+    per_run = asyncio.run(go())
+    sub = sample[sample.call_id.isin(ids)]
+    scores, decisions = {c: [] for c in ids}, {c: [] for c in ids}
+    for jr in per_run:
+        rows, _ = merge(sub, flags[flags.call_id.isin(ids)], jr)
+        for r in rows:
+            scores[r["call_id"]].append(r["score"])
+            decisions[r["call_id"]].append({d["code"] for d in r["defects"]})
+    def agree(key):  # share of per-call items whose value is identical in every run
+        vals = {}
+        for jr in per_run:
+            for cid, r in jr.items():
+                for it in r[key]:
+                    vals.setdefault((cid, it["item_id" if key == "checklist" else "field"]), []).append(
+                        it["result" if key == "checklist" else "match"])
+        return float(np.mean([len(set(v)) == 1 for v in vals.values()])), len(vals)
+    ck_agree, ck_n = agree("checklist")
+    fc_agree, fc_n = agree("form_check")
+    pairs = [(c, k) for c in ids for k in set().union(*decisions[c])]
+    same = [all(k in d for d in decisions[c]) for c, k in pairs]
+    identical_calls = np.mean([all(d == decisions[c][0] for d in decisions[c]) for c in ids])
+    sd = np.mean([np.std(v) for v in scores.values()])
+    out = {"calls": n, "runs": runs, "judge_code_decisions": len(pairs),
+           "identical_code_decisions": float(np.mean(same)) if same else 1.0,
+           "calls_with_identical_defect_sets": float(identical_calls), "mean_score_std": float(sd),
+           "max_score_std": float(max(np.std(v) for v in scores.values())), "model": model,
+           "prompt_version": judge.PROMPT_VERSION,
+           "checklist_items_identical": ck_agree, "checklist_items": ck_n,
+           "form_fields_identical": fc_agree, "form_fields": fc_n}
+    (OUT / "stability.json").write_text(json.dumps(out, indent=1))
+    print(f"Stability ({model}, {judge.PROMPT_VERSION}): {n} calls x {runs} runs -> "
+          f"{out['identical_code_decisions']:.0%} of {len(pairs)} (call, code) judge decisions identical across runs; "
+          f"{identical_calls:.0%} of calls had identical defect sets; score std-dev mean {sd:.1f} (max {out['max_score_std']:.1f}); "
+          f"checklist results identical {ck_agree:.0%} of {ck_n}; form_check verdicts identical {fc_agree:.0%} of {fc_n}.")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stability", type=int, help="(Step 9) re-judge N random calls")
     ap.add_argument("--runs", type=int, default=3)
     a = ap.parse_args()
+    if a.stability:
+        stability(a.stability, a.runs)
+        return
     val, h, ag, human = compute()
     val.to_csv(OUT / "validation.csv", index=False)
     ag.to_csv(OUT / "agent_validation.csv", index=False)

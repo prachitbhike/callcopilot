@@ -6,9 +6,8 @@ deterministic forms / cases / labels → label verification (`gen.verify_labels`
 (prompt **v6**, strict tool schema) → merge / score → validation on three call sets → Streamlit app
 (Overview / Inspector / Validation; live re-judge verified, cache untouched).
 
-**Not on this branch:** stretch Steps 7–9 (Agents page + coaching cards, Review Queue, `--stability`) were built in a
-parallel session on `build/steps-0-5` (commits 1f22cb9, 84ce7be) and still need to be merged with this branch
-(both touch `app.py`, `qa/validate.py`, `Makefile`, this file).
+**Merged:** stretch Steps 7–9 (Agents page + coaching cards, Review Queue, `--stability`) from the parallel branch
+`build/steps-0-5` (commits 1f22cb9, 84ce7be); coaching cards and stability need regenerating on prompt v6.
 
 ### Call sets
 | set | dir | seed | role |
@@ -78,7 +77,15 @@ Launch: `make app` (= `.venv/bin/streamlit run app.py`). Held-out set: `make hol
   Rule-derived codes (OUTCOME_VS_RX, HOLD_OVERRUN, AFTER_HOURS, REDUNDANT_CALL) are true by construction.
 - Label verification and derived labels use keyword / date matching; a rep phrasing a fact unusually can mis-verify.
 - Transcripts are cleaner than real ASR; 0-second calls fall back to a one-line "[ringing]" template (7 across A/B/C).
-- Stability (Step 9) exists on `build/steps-0-5` for prompt v3 only; re-run on v6 after the merge.
+- Stability (Step 9) was measured on prompt v3; the v6 re-run is listed in the Phase 2 log below.
+
+**Stretch (Steps 7–9, merged from `build/steps-0-5`):** Agents page (table sorted by criticals, defect mix, 3 worst calls →
+Inspector, Sonnet coaching cards cached in `out/coaching_cards.jsonl`); Review Queue (criticals first then lowest
+confidence; Confirm / Reject / Change code → `out/human_labels.csv`; Validation page shows judge-vs-human agreement);
+stability (`make stability` → `out/stability.json`). No human verdicts are shipped (the queue starts empty).
+Stability as measured on prompt **v3** (15 calls × 3 runs): 13/15 calls with identical defect sets, checklist results 99%
+identical (144 items), form_check verdicts 88% identical (75 fields), score std-dev mean 0.9 (max 7.1, one
+MISSED_NEXT_STEP flipping). Re-run on v6 is pending.
 
 ## Choices made (build log)
 - Python 3.11 venv at `.venv/` (system python is 3.13). Makefile targets use `.venv/bin/python`. Worktrees symlink `.venv`,
@@ -105,3 +112,6 @@ Launch: `make app` (= `.venv/bin/streamlit run app.py`). Held-out set: `make hol
 - Transfer forms log the pharmacy Rx number as `reference_number`; the judge prompt defines reference_number per call type.
 - The spec's `score` formula is unchanged; `agent_score` (without process flags) is an additional column.
 - ENR_BV_RESULT applies only when enrolled (pending BV has no result to obtain); ENR_BRIDGE when enrolled or pending BV.
+- App nav uses a horizontal `st.radio` (not `st.tabs`) so buttons can switch to the Inspector programmatically.
+- Fixed: Streamlit `cache_data` ignores `_`-prefixed args, so the file-mtime cache key never invalidated; renamed.
+- Coaching card: forced `submit_card` tool; JSON-in-string repair + shape check with up to 3 attempts.
