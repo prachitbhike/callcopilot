@@ -85,12 +85,12 @@ if nav == "Overview":
         cnt = md.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
         fig = px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
                      title="Defects by code", category_orders={"code": cnt.code.tolist()})
-        l.plotly_chart(fig, use_container_width=True)
+        l.plotly_chart(fig, width="stretch")
         src = md.groupby(["code", "source"]).size().reset_index(name="n")
     crit = scored.assign(crit=scored.n_critical > 0).groupby("call_type").crit.mean().reset_index()
     fig2 = px.bar(crit, x="call_type", y="crit", title="Critical rate by call type", color_discrete_sequence=["#d62728"])
     fig2.update_yaxes(tickformat=".0%", title=None)
-    r.plotly_chart(fig2, use_container_width=True)
+    r.plotly_chart(fig2, width="stretch")
     st.caption(f"Layer agreement (rules ∩ judge on FAB_CONTACT / MISSING_REF): {pct(summary.get('layer_agreement'))} · "
                f"calls needing human review: {int(scored.needs_human_review.sum())}")
 
@@ -170,7 +170,7 @@ if nav == "Call Inspector":
             bad = row["judge"] == "mismatch" or (row.name == "outcome_status" and "OUTCOME_VS_RX" in rule_codes) or \
                   (row.name == "spoke_with_rep" and "FAB_CONTACT" in rule_codes)
             return ["background-color:#ffd6d6" if bad else ""] * len(row)
-        st.dataframe(diff.style.apply(hl, axis=1), use_container_width=True)
+        st.dataframe(diff.style.apply(hl, axis=1), width="stretch")
         st.caption("Middle column = the judge's extraction from the transcript — effectively an auto-drafted form.")
 
         st.subheader(f"Defects · score {res['score']}")
@@ -186,7 +186,7 @@ if nav == "Call Inspector":
             st.subheader("Checklist")
             ck = pd.DataFrame([{"item": c["item_id"], "result": c["result"],
                                 "evidence": (c.get("evidence") or {}).get("quote") or ""} for c in res["checklist"]])
-            st.dataframe(ck, hide_index=True, use_container_width=True)
+            st.dataframe(ck, hide_index=True, width="stretch")
         st.subheader("Coaching note")
         st.info(res.get("coaching_note") or "—")
         if st.button("Re-run judge live"):
@@ -214,9 +214,9 @@ if nav == "Agents":
                      "pct_needing_review": f"{g.needs_human_review.mean():.0%}",
                      "form_accuracy": f"{g.form_accuracy.mean():.0%}"})
     agt = pd.DataFrame(rows).sort_values(["criticals_per_100", "mean_score"], ascending=[False, True])
-    st.dataframe(agt, hide_index=True, use_container_width=True)
+    st.dataframe(agt, hide_index=True, width="stretch")
     with st.expander("Ground truth (synthetic)"):
-        st.dataframe(csv("agent_profiles.csv", SYN), hide_index=True, use_container_width=True)
+        st.dataframe(csv("agent_profiles.csv", SYN), hide_index=True, width="stretch")
 
     ag = st.selectbox("Agent", agt.agent_id.tolist())
     g = scored[scored.agent_id == ag]
@@ -230,7 +230,7 @@ if nav == "Agents":
             cnt = mix.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
             st.plotly_chart(px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
                                    title=f"{ag} defect mix", category_orders={"code": cnt.code.tolist()}),
-                            use_container_width=True)
+                            width="stretch")
         st.markdown("**3 worst calls**")
         for row in g.sort_values("score").head(3).itertuples():
             st.button(f"{row.score} · {row.call_type} · {row.destination_name} · {row.codes if isinstance(row.codes, str) else '—'}",
@@ -314,11 +314,11 @@ if nav == "Validation":
         v = val[val.view == view].drop(columns="view")
         st.dataframe(v.style.apply(lambda r: ["background-color:#ffe5e5" if r.severity == "critical" else ""] * len(r), axis=1)
                      .format({"precision": "{:.2f}", "recall": "{:.2f}", "f1": "{:.2f}"}, na_rep="—"),
-                     hide_index=True, use_container_width=True)
+                     hide_index=True, width="stretch")
     st.subheader("Agents — hidden ground truth")
     ag = csv("agent_validation.csv")
     if not ag.empty:
-        st.dataframe(ag.round(1), hide_index=True, use_container_width=True)
+        st.dataframe(ag.round(1), hide_index=True, width="stretch")
     hl = csv("human_labels.csv")
     if not hl.empty:
         st.subheader("Judge vs human reviewers")
@@ -329,7 +329,7 @@ if nav == "Validation":
                                        rejected=("verdict", lambda v: (v == "reject").sum()),
                                        recoded=("verdict", lambda v: (v == "change").sum())).reset_index()
         agree["agreement"] = (agree.confirmed / agree.reviewed).map("{:.0%}".format)
-        st.dataframe(agree, hide_index=True, use_container_width=True)
+        st.dataframe(agree, hide_index=True, width="stretch")
         st.caption(f"{len(hl)} verdicts · overall agreement {(hl.verdict == 'confirm').mean():.0%}. "
                    "Confirmed verdicts become the golden set.")
     st.caption("Planted-defect recall is a unit test, not proof: transcripts are cleaner than real ASR and rule-derived "
