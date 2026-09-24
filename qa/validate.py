@@ -1,15 +1,19 @@
 """Step 4: precision/recall vs planted labels. python -m qa.validate"""
 import argparse
 import json
+import os
 from pathlib import Path
 
 import numpy as np
+from dotenv import load_dotenv
 import pandas as pd
 import yaml
 from scipy.stats import spearmanr
 
-SYN = Path("data/synthetic")
-OUT = Path("out")
+load_dotenv()
+load_dotenv(".env.local")
+SYN = Path(os.environ.get("SYN_DIR", "data/synthetic"))
+OUT = Path(os.environ.get("OUT_DIR", "out"))
 RUBRIC = yaml.safe_load(open("qa/rubric.yaml"))
 SEV = {c: v["severity"] for c, v in RUBRIC["codes"].items()}
 BADNESS = {"solid": 0, "ramping": 1, "curt": 2, "phi_oversharer": 2, "logs_without_connecting": 3}
@@ -38,6 +42,11 @@ def prf(tp, fp, fn):
 def compute():
     results = load_results()
     labels = pd.read_csv(SYN / "labels.csv", dtype={"call_id": str})
+    n_unmanifested = 0
+    if "manifested" in labels.columns:  # gen.verify_labels: planted behaviour absent from the rendered transcript
+        drop = labels.manifested.astype(str).str.lower() == "false"
+        n_unmanifested = int(drop.sum())
+        labels = labels[~drop]
     judged = {r["call_id"] for r in results if r.get("judged")}
     universe = judged or {r["call_id"] for r in results}
     results = [r for r in results if r["call_id"] in universe]
@@ -83,10 +92,17 @@ def compute():
     ag["badness"] = ag.profile.map(BADNESS)
     rho = spearmanr(ag.badness, ag.mean_score).statistic if len(ag) > 2 else np.nan
 
+    usage = [r["usage"] for r in results if r.get("usage")]
     headline = {"calls_evaluated": len(universe), "critical_recall": critical_recall,
                 "judge_critical_recall": judge_crit_recall, "clean_call_fp_rate": clean_fp,
                 "clean_calls": len(clean), "evidence_validity": evidence_validity, "evidence_failures": ev_fail,
-                "judge_defects_total": ev_total, "layer_agreement": agreement, "spearman_rho": rho}
+                "judge_defects_total": ev_total, "layer_agreement": agreement, "spearman_rho": rho,
+                "labels_dropped_unmanifested": n_unmanifested, "labels_used": len(gold),
+                "prompt_versions": sorted({str(r.get("prompt_version")) for r in results if r.get("judged")}),
+                "guard_drops": int(sum(r.get("guard_drops", 0) for r in results)),
+                "mean_input_tokens": float(np.mean([u["input_tokens"] for u in usage])) if usage else None,
+                "mean_output_tokens": float(np.mean([u["output_tokens"] for u in usage])) if usage else None,
+                "mean_latency_s": float(np.mean([r["latency_s"] for r in results if r.get("latency_s")])) if usage else None}
 
     hum = OUT / "human_labels.csv"
     human = None
@@ -99,18 +115,94 @@ def compute():
     return val, headline, ag, human
 
 
+def stability(n, runs, seed=7, focus=False):
+    """Re-judge n calls `runs` times (no cache writes); report decision agreement + score std-dev.
+    focus=True picks the n calls with the most judge defects instead of a random sample, so the agreement figure
+    covers real decisions rather than mostly-clean calls."""
+    import asyncio
+    import os
+    import random
+    from anthropic import AsyncAnthropic
+    from qa import judge
+    from qa.llm import client_kwargs
+    from qa.pipeline import merge
+    from qa.rules import load_inputs, run_rules
+
+    sample, forms, cases, tx = load_inputs()
+    flags = run_rules(sample, forms, cases, tx)
+    calls = {r["call_id"]: r for r in sample.to_dict("records")}
+    if focus:
+        res = {r["call_id"]: r for r in load_results()}
+        ids = sorted(calls, key=lambda c: (-len(res.get(c, {}).get("defects", [])), c))[:n]
+    else:
+        ids = random.Random(seed).sample(sorted(calls), n)
+    model = os.environ["JUDGE_MODEL"]
+
+    async def go():
+        client, sem = AsyncAnthropic(**client_kwargs()), asyncio.Semaphore(8)
+
+        async def one(cid):
+            c = calls[cid]
+            r = await judge.judge_one(client, sem, c, tx[cid], forms[cid], cases[c["case_ref"]], model)
+            return cid, r.model_dump()
+        return [dict(await asyncio.gather(*(one(c) for c in ids))) for _ in range(runs)]
+
+    per_run = asyncio.run(go())
+    sub = sample[sample.call_id.isin(ids)]
+    scores, decisions = {c: [] for c in ids}, {c: [] for c in ids}
+    for jr in per_run:
+        rows, _ = merge(sub, flags[flags.call_id.isin(ids)], jr)
+        for r in rows:
+            scores[r["call_id"]].append(r["score"])
+            decisions[r["call_id"]].append({d["code"] for d in r["defects"]})
+    def agree(key):  # share of per-call items whose value is identical in every run
+        vals = {}
+        for jr in per_run:
+            for cid, r in jr.items():
+                for it in r[key]:
+                    vals.setdefault((cid, it["item_id" if key == "checklist" else "field"]), []).append(
+                        it["result" if key == "checklist" else "match"])
+        return float(np.mean([len(set(v)) == 1 for v in vals.values()])), len(vals)
+    ck_agree, ck_n = agree("checklist")
+    fc_agree, fc_n = agree("form_check")
+    pairs = [(c, k) for c in ids for k in set().union(*decisions[c])]
+    same = [all(k in d for d in decisions[c]) for c, k in pairs]
+    identical_calls = np.mean([all(d == decisions[c][0] for d in decisions[c]) for c in ids])
+    sd = np.mean([np.std(v) for v in scores.values()])
+    out = {"calls": n, "runs": runs, "selection": "most judge defects" if focus else f"random (seed {seed})",
+           "judge_code_decisions": len(pairs),
+           "identical_code_decisions": float(np.mean(same)) if same else 1.0,
+           "calls_with_identical_defect_sets": float(identical_calls), "mean_score_std": float(sd),
+           "max_score_std": float(max(np.std(v) for v in scores.values())), "model": model,
+           "prompt_version": judge.PROMPT_VERSION,
+           "checklist_items_identical": ck_agree, "checklist_items": ck_n,
+           "form_fields_identical": fc_agree, "form_fields": fc_n}
+    (OUT / ("stability_focus.json" if focus else "stability.json")).write_text(json.dumps(out, indent=1))
+    print(f"Stability ({model}, {judge.PROMPT_VERSION}): {n} calls x {runs} runs -> "
+          f"{out['identical_code_decisions']:.0%} of {len(pairs)} (call, code) judge decisions identical across runs; "
+          f"{identical_calls:.0%} of calls had identical defect sets; score std-dev mean {sd:.1f} (max {out['max_score_std']:.1f}); "
+          f"checklist results identical {ck_agree:.0%} of {ck_n}; form_check verdicts identical {fc_agree:.0%} of {fc_n}.")
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stability", type=int, help="(Step 9) re-judge N random calls")
     ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument("--focus", action="store_true", help="stability on the N calls with the most judge defects")
     a = ap.parse_args()
+    if a.stability:
+        stability(a.stability, a.runs, focus=a.focus)
+        return
     val, h, ag, human = compute()
     val.to_csv(OUT / "validation.csv", index=False)
     ag.to_csv(OUT / "agent_validation.csv", index=False)
     (OUT / "validation_summary.json").write_text(json.dumps({k: (None if v != v else v) for k, v in h.items()}, indent=1, default=float))
     pd.set_option("display.width", 160)
     print(val[val.view == "merged"].round(2).to_string(index=False))
-    print(f"\ncalls evaluated {h['calls_evaluated']} · critical recall {h['critical_recall']:.2f} "
+    print(f"\nlabels used {h['labels_used']} ({h['labels_dropped_unmanifested']} planted labels dropped: behaviour not in transcript) · "
+          f"prompt {h['prompt_versions']} · guard drops {h['guard_drops']}")
+    print(f"calls evaluated {h['calls_evaluated']} · critical recall {h['critical_recall']:.2f} "
           f"(judge-only criticals {h['judge_critical_recall']:.2f}) · clean-call FP rate {h['clean_call_fp_rate']:.2f} "
           f"({h['clean_calls']} clean) · evidence validity {h['evidence_validity']:.2f} "
           f"({h['evidence_failures']}/{h['judge_defects_total']}) · layer agreement {h['layer_agreement']:.2f}")

@@ -33,7 +33,7 @@ codes:
   MISSED_NEXT_STEP:
     severity: major
     detector: [judge]
-    definition: a required checklist item was available and not asked (e.g. denial -> no appeal deadline asked)
+    definition: an applicable call-type checklist item (PA_* / ENR_* / TX_*) failed - the fact was neither asked for by the agent nor volunteered by the rep (e.g. denial -> no appeal deadline)
   MISSING_REF:
     severity: major
     detector: [rules, judge]
@@ -61,20 +61,27 @@ checklists:
     CAPTURE_REF: gets rep name + reference #
     READBACK: reads outcome back
     PROFESSIONAL: courteous, no interrupting, sarcasm or audible frustration
+  # one fact per item so pass/fail is unambiguous for the judge and for human reviewers
   pa_plan_call:
     PA_STATUS: obtains current PA status
-    PA_PENDING_DATE: if pending, asks expected determination date
-    PA_DENIAL_INFO: if denied, asks denial reason + appeal deadline + peer-to-peer availability
-    PA_AUTH: if approved, gets auth # + effective dates
+    PA_PENDING_DATE: if pending, obtains the expected determination date
+    PA_DENIAL_REASON: if denied, obtains the denial reason
+    PA_APPEAL_DEADLINE: if denied, obtains the appeal deadline
+    PA_PEER_TO_PEER: if denied, asks about peer-to-peer review availability
+    PA_AUTH_NUMBER: if approved, obtains the authorization number
+    PA_AUTH_DATES: if approved, obtains the effective dates
+    PA_NOT_ON_FILE: if no PA is on file, asks how / where to submit one
   patient_access_check:
     ENR_STATUS: obtains enrollment status
-    ENR_MISSING_DOCS: asks which documents are missing
-    ENR_BV_RESULT: asks benefits-verification result
-    ENR_BRIDGE: asks about bridge / quick-start supply and ship date
+    ENR_MISSING_DOCS: if pending documents, obtains which documents are missing
+    ENR_BV_RESULT: if enrolled, obtains the benefits-verification result (coverage / copay)
+    ENR_BRIDGE: if enrolled or pending BV, asks about bridge / quick-start supply and ship date
+    ENR_DENIAL_INFO: if denied, obtains the reason and asks about re-application or appeal options
   transfer_confirm_call:
-    TX_RECEIVED: confirms Rx received + pharmacy Rx #
-    TX_BLOCKERS: asks about stock / fill ETA / PA / insurance reject
-    TX_RESEND: "if not received: confirm NPI/fax, request re-send"
+    TX_RECEIVED: confirms whether the Rx was received
+    TX_RX_NUMBER: if received (incl. needs PA / filled), obtains the pharmacy Rx number
+    TX_BLOCKERS: if received but not filled, asks about stock / fill ETA / PA / insurance reject
+    TX_RESEND: "if not received: confirms NPI / fax and requests a re-send"
 
 outcome_status:
   pa_plan_call: [approved, denied, pending, not_on_file, no_answer]

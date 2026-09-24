@@ -1,0 +1,9 @@
+agent_id,profile,calls,mean_score,criticals_per_100,badness
+AGT-01,logs_without_connecting,10,67.5,80.0,3
+AGT-02,logs_without_connecting,10,83.0,40.0,3
+AGT-03,ramping,10,86.5,20.0,1
+AGT-04,ramping,10,91.0,0.0,1
+AGT-05,curt,10,90.5,0.0,2
+AGT-06,phi_oversharer,10,78.5,50.0,2
+AGT-07,solid,10,94.5,0.0,0
+AGT-08,solid,10,87.0,20.0,0

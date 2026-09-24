@@ -6,7 +6,16 @@
  "clean_calls": 45,
  "evidence_validity": 1.0,
  "evidence_failures": 0,
- "judge_defects_total": 21,
+ "judge_defects_total": 22,
  "layer_agreement": 1.0,
- "spearman_rho": -0.6343350474165467
+ "spearman_rho": -0.6343350474165467,
+ "labels_dropped_unmanifested": 1,
+ "labels_used": 56,
+ "prompt_versions": [
+  "v6"
+ ],
+ "guard_drops": 1,
+ "mean_input_tokens": 4937.325,
+ "mean_output_tokens": 1183.3625,
+ "mean_latency_s": 9.276875
 }

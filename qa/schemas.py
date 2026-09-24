@@ -43,3 +43,6 @@ class JudgeResult(AuditSubmission):
     model: str
     prompt_version: str
     evidence_failures: int = 0
+    guard_drops: int = 0            # placeholder / low-confidence defects removed in postprocess
+    usage: dict | None = None       # {input_tokens, output_tokens} from the API response
+    latency_s: float | None = None

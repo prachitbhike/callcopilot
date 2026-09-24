@@ -1,0 +1,9 @@
+AGT-01: 8 defects · fix: ['Logging outcomes (received/approved/enrolled) that', 'Marking calls as completed with a rep despite call']
+AGT-02: 2 defects · fix: ['Do not log spoke_with_rep as true when the call ne', 'Verify a live rep answered before entering a rep n']
+AGT-03: 7 defects · fix: ['Capture and record reference/authorization numbers', 'Always align form outcome status with what you tel']
+AGT-04: 3 defects · fix: ['Reconcile call outcome with the form before submit', 'When a denial is given, always ask about re-applic']
+AGT-05: 3 defects · fix: ['Sighing audibly and speaking curtly when repeating', 'Not asking about appeal or re-application options ']
+AGT-06: 5 defects · fix: ['Volunteering full DOB, address, and diagnosis befo', 'Repeating this pattern across multiple calls inste']
+AGT-07: 0 defects · fix: ['Confirm transfer/receipt of information (TX_RECEIV', 'Always capture and read back the transaction/refer']
+AGT-08: 0 defects · fix: ['Perform a full readback of key details (patient, d', 'Always state the transaction reference/RX number c']
+Stability (claude-sonnet-5, v6): 15 calls x 3 runs -> 100% of 17 (call, code) judge decisions identical across runs; 100% of calls had identical defect sets; score std-dev mean 0.0 (max 0.0); checklist results identical 97% of 172; form_check verdicts identical 96% of 75.

@@ -1,64 +1,140 @@
 # NOTES
 
-## Status (Step 6 freeze)
-**Works end to end on real data + API:** real Aug 2024 log → 8 profiled agents / 80 sampled calls → Haiku
-transcripts (78 LLM, 2 template fallback) → deterministic forms/cases/labels → rules (100% of calls) →
-Sonnet 5 judge (80/80, prompt v3) → merge/score → validation → Streamlit app (Overview / Inspector / Validation,
-live re-judge verified).
-**Stubbed / not done:** stretch Steps 7–9 (agents tab + coaching cards, review queue, stability run);
-`--stability` flag is parsed but not implemented; `human_labels.csv` agreement is coded but untested.
+## Status (Phase 1 demo hardening, 2026-09-24)
+**Works end to end on real data + API:** real Aug 2024 log → 8 profiled agents / 80 sampled calls → Haiku transcripts →
+deterministic forms / cases / labels → label verification (`gen.verify_labels`) → rules (100% of calls) → Sonnet 5 judge
+(prompt **v6**, strict tool schema) → merge / score → validation on three call sets → Streamlit app
+(Overview / Inspector / Validation; live re-judge verified, cache untouched).
 
-**Planted labels (80 calls, 45 clean):** AFTER_HOURS 13 · HOLD_OVERRUN 11 · OUTCOME_VS_RX 6 · PHI_DISCLOSURE 5 ·
-MISSED_NEXT_STEP 5 · FAB_CONTACT 4 · STATUS_MISMATCH 4 · REDUNDANT_CALL 4 · MISSING_REF 2 · UNPROFESSIONAL 2.
+**Merged:** stretch Steps 7–9 (Agents page + coaching cards, Review Queue, `--stability`) from the parallel branch
+`build/steps-0-5` (commits 1f22cb9, 84ce7be); coaching cards and stability need regenerating on prompt v6.
 
-**Validation (merged):** critical recall 1.00 · clean-call FP rate 0.00 · evidence validity 1.00 (0/21 quotes
-failed) · layer agreement 1.00 · Spearman ρ(profile badness, score) = −0.63. Only miss: MISSED_NEXT_STEP recall
-0.60 (3/5). **Caveat:** prompt v3 + the n/a-defect guard were tuned after seeing v2 validation FPs on this same
-set, so v3 numbers are in-sample. v2 (pre-tuning) headline: critical recall 1.00, clean-call FP 0.22, evidence
-validity 1.00 (0/33), ρ −0.59 (`out/validation_summary_v2.json`, `out/validation_v2.csv`). v2 FPs were mostly
-spec ambiguity (transfer "received" with back-order/insurance-reject blockers; conditional checklist items).
+### Call sets
+| set | dir | seed | role |
+| --- | --- | --- | --- |
+| A | `data/synthetic` / `out` | 42 | in-sample: every prompt version was tuned on it |
+| B | `data/holdout` / `out/holdout` | 7 | dev set: used once to diagnose MISSED_NEXT_STEP false positives (v4 → v6); disjoint from A |
+| C | `data/holdout_c` / `out/holdout_c` | 11 | **held-out**: generated after v6 was frozen, judged exactly once; disjoint from A and B |
 
-Launch: `make app` (= `.venv/bin/streamlit run app.py`).
+Each set = 80 calls, same 8 pseudonymous agents, sampled from the real log with the in-sample call_ids excluded.
+
+### Headline numbers (merged rules + judge, verified labels)
+| | A in-sample (v6) | C held-out (v6, judged once) |
+| --- | --- | --- |
+| critical recall (FAB_CONTACT, STATUS_MISMATCH, OUTCOME_VS_RX, PHI_DISCLOSURE) | 1.00 (19/19) | 1.00 (16/16) |
+| critical precision | 1.00 | 1.00 |
+| clean-call false-positive rate (major or critical flag on a zero-label call) | 0.00 (45 clean) | 0.03 (1 of 30 clean) |
+| evidence validity (judge quotes found verbatim) | 1.00 (22/22) | 1.00 (27/27) |
+| UNPROFESSIONAL · MISSING_REF · MISSED_NEXT_STEP recall | 1.00 · 1.00 · 1.00 | 1.00 · 1.00 · 1.00 |
+| MISSING_REF · MISSED_NEXT_STEP precision | 1.00 · 1.00 | 0.80 · 0.40 |
+| Spearman ρ (profile badness vs mean agent score) | −0.63 | −0.78 |
+| labels used (dropped as not manifested) | 56 (1) | 60 (3) |
+
+C disagreements, all major-severity: 2 × TX_RESEND flagged when the agent gave the NPI but had no fax number
+(strict but arguable), 1 × PA_NOT_ON_FILE (agent never asked how to submit), 1 × MISSING_REF where the rep spoke
+the Rx number in a different format than the record. No critical disagreement on any set.
+
+Dev set B history (why v4 → v6): v4 on B: critical recall 1.00, clean-call FP 0.10, MISSED_NEXT_STEP 0/3 + 5 FP
+(readback / self-identification mislabelled as MISSED_NEXT_STEP), 1 STATUS_MISMATCH FP contradicting the judge's own
+form_check, 1 MISSING_REF FP from a form Rx number the rep never spoke. v5 on B: MISSED_NEXT_STEP 4/4 + 7 FP
+(new granular items applied to non-applicable statuses). v6 fixes are listed below.
+
+**Judge cost (measured from API usage):** ~4.9k input + ~1.2k output tokens per call on `claude-sonnet-5` ≈ **$0.021 / call**,
+~9 s latency at 8 concurrent → 80 calls ≈ $1.70; 8,294 calls / month ≈ **$175 / month** before prompt caching.
+Today's build spent ≈ $13 (≈ 600 judge calls across prompt versions and sets, 160 Haiku renders).
+
+Launch: `make app` (= `.venv/bin/streamlit run app.py`). Held-out set: `make holdout` (writes `data/holdout`, `out/holdout`).
+
+## What changed in Phase 1 (from the demo snapshot a2069d8)
+- **Prompt v3 → v6** (`qa/judge.py`): strict tool schema (`strict: true`, every property required, no defaults) after v4
+  returned partial tool inputs on 4 calls; checklist items split into single facts (`qa/rubric.yaml`: PA_AUTH_NUMBER /
+  PA_AUTH_DATES, PA_DENIAL_REASON / PA_APPEAL_DEADLINE / PA_PEER_TO_PEER, PA_NOT_ON_FILE, ENR_DENIAL_INFO, TX_RX_NUMBER);
+  MISSED_NEXT_STEP restricted to call-type items with an explicit applicability table; form_check `transcript_value`
+  must be form-ready (enum / name / number / null) so the middle column of the three-way diff is a real auto-draft.
+- **Post-processing guards:** confidence floor 0.5 (placeholder defects arrive at ~0.0–0.3); STATUS_MISMATCH must cite a
+  REP turn *and* agree with the judge's own form_check; MISSING_REF must quote the REP turn; counted in `guard_drops`.
+- **Label verification** (`gen/verify_labels.py`, run by the generator): each planted judge-code label is checked against
+  the rendered transcript (did the rep really withhold the appeal deadline? did the agent really sigh?). Labels that did
+  not manifest are excluded from validation (`manifested` column). MISSED_NEXT_STEP is additionally **derived** for any
+  connected call whose transcript lacks a rubric-required fact (`planted_by=derived-facts`), the same way OUTCOME_VS_RX
+  is derived. Before this, 2 of 5 in-sample MISSED_NEXT_STEP "misses" were label noise (Haiku had the rep volunteer the
+  info) and 2 were real judge misses (auth number / denial reason never stated, judge passed the bundled item).
+- **Generator consistency:** transfer reps must state the pharmacy Rx number unless MISSED_NEXT_STEP is planted; a
+  post-render pass nulls a form Rx number the rep never spoke; dates and DOBs are spoken naturally (no ISO); 3 render
+  attempts before template fallback; `--rerender ID,ID`, `--exclude CSV` (disjoint held-out sampling), `SYN_DIR`/`OUT_DIR`
+  env vars so every module runs on another set; blank destination names → "Unknown destination".
+- **Metrics:** form accuracy counts verifiable fields only (unverifiable fields on no-answer calls were dragging 92% down
+  to 81%); `agent_score` and `kind: process|agent` on merged defects (HOLD_OVERRUN, AFTER_HOURS, REDUNDANT_CALL are dialer /
+  workflow flags, tagged "process" in the Inspector); token usage + latency captured per judge call.
+- **App:** live re-run compares against the cached verdict without writing to `out/` (a re-run during the demo can no
+  longer change headline numbers); Validation shows in-sample and held-out side by side plus labels-used / dropped;
+  auto-draft caption counts pre-fillable fields; Streamlit `cache_data` key fix (underscore args are ignored).
+- Re-rendered the robotic template transcript (939 s Dupixent MyWay call) and the ISO-date CVS call.
+
+## Phase 2 (same day, after merging `build/steps-0-5`)
+- **Operations page** (`qa/ops.py` → `out/ops_*.{json,csv}`): Layer 1 rules on the real August log, no transcripts needed.
+  8,294 calls · 25 agents pseudonymised (AGT-01..08 = the judge-demo agents, others `agent-09..25` by volume) · 447
+  destinations. After-hours dials 685 (8.3%); hold overruns 737 (8.9%, 43 h excess); calls under 20 s 572 (6.9%, 122 at
+  0 s); repeat dials by the same agent to the same number on the same day 2,457 (30%, an upper bound: no case ref in the
+  log); 1.32 transfer calls per transferred Rx; under-20 s share 6.1% during 9–17 ET vs 14.0% at 19–20 ET; new cohort
+  (first call ≥ Aug 20) over the hold limit on 23.4% of calls vs 12.5% for tenured agents on the same dates. Real agent
+  emails never leave `qa/ops.py`; the xlsx stays gitignored and the committed aggregates carry no identifiers.
+- **Overview leads with impact:** fabricated contacts, status contradictions, PHI over-disclosures, calls needing a human
+  (13 of 80, −84% listening); second row = audit quality incl. held-out critical recall and clean-call FP rate; agent-conduct
+  defects and process flags charted separately; **Cost & scale** panel from measured usage: ≈ 4.9k in / 1.2k out tokens,
+  ≈ $0.022 per call, ≈ $180 per month at the real August volume, ≈ 9 s latency, 3.5 / 5 form fields auto-fillable on
+  connected calls (≈ 690 agent-hours a month of form entry addressable at 5 min per call).
+- **Inspector:** "Auto-drafted form" card renders the judge's typed transcript values as a disabled form under the three-way diff.
+- **Coaching cards** regenerated on v6 results with process flags excluded from the evidence (hold time and evening dials are
+  not coaching material); cards for defect-free agents fall back to forward-looking habits, not invented incidents.
+- **Stability on v6** (`make stability`, 15 random calls × 3 runs): 100% identical defect sets, checklist items identical
+  97% of 171, form-field verdicts identical 97% of 75, score std-dev 0.0. The random sample held only 2 judge decisions, so
+  `qa.validate --stability 15 --runs 3 --focus` re-judges the 15 calls with the most judge defects instead:
+  100% of 17 (call, code) judge decisions identical across runs, 100% identical defect sets, checklist items identical
+  97% of 172, form-field verdicts identical 96% of 75, score std-dev 0.0 (`out/stability_focus.json`).
+- Validation page shows both stability runs; Makefile gained `verify`, `holdout`, `coach`, `stability`.
+
+## Honest caveats for the debrief
+- Set A numbers are in-sample by construction; quote **set C**. Set B was consumed by tuning.
+- MISSED_NEXT_STEP is the judgement-heavy code: recall is solid, precision on C is 0.40 (3 FPs, all defensible strictness).
+  Rule-derived codes (OUTCOME_VS_RX, HOLD_OVERRUN, AFTER_HOURS, REDUNDANT_CALL) are true by construction.
+- Label verification and derived labels use keyword / date matching; a rep phrasing a fact unusually can mis-verify.
+- Transcripts are cleaner than real ASR; 0-second calls fall back to a one-line "[ringing]" template (7 across A/B/C).
+- Stability (Step 9) was measured on prompt v3; the v6 re-run is listed in the Phase 2 log below.
+
+**Stretch (Steps 7–9, merged from `build/steps-0-5`):** Agents page (table sorted by criticals, defect mix, 3 worst calls →
+Inspector, Sonnet coaching cards cached in `out/coaching_cards.jsonl`); Review Queue (criticals first then lowest
+confidence; Confirm / Reject / Change code → `out/human_labels.csv`; Validation page shows judge-vs-human agreement);
+stability (`make stability` → `out/stability.json`). No human verdicts are shipped (the queue starts empty).
+Stability as measured on prompt **v3** (15 calls × 3 runs): 13/15 calls with identical defect sets, checklist results 99%
+identical (144 items), form_check verdicts 88% identical (75 fields), score std-dev mean 0.9 (max 7.1, one
+MISSED_NEXT_STEP flipping). Re-run on v6 is pending.
 
 ## Choices made (build log)
-- Python 3.11 venv at `.venv/` (system python is 3.13). Makefile targets use `.venv/bin/python`.
+- Python 3.11 venv at `.venv/` (system python is 3.13). Makefile targets use `.venv/bin/python`. Worktrees symlink `.venv`,
+  copy `.env` / `.env.local` and symlink `data/calls.xlsx` from the main checkout (all gitignored).
 - `PLAN.md` copied to `CLAUDE.md` per the spec's instructions.
-- Git remote: `origin = github.com/prachitbhike/callcopilot` (private). `.env`, `.venv/`, and raw `data/calls.xlsx`
-  (contains real agent emails) are gitignored. Everything else incl. `out/` and `data/synthetic/` is committed so
-  the app demos offline.
-- **Model params:** Sonnet 5-era models reject `temperature` and think by default; forced tool use requires thinking
-  off. `qa/llm.py::sampling_kwargs` sends `temperature` to Haiku 4.5 (generator, 0.8) and
-  `thinking: {type: disabled}` to Sonnet 5 (judge; no temperature available → "temperature 0" is not settable).
-- `OUTCOME_MAP` / `true_status` live in `qa/rules.py`; the generator imports them to derive `OUTCOME_VS_RX` labels,
-  so that code is rule-true by construction (as the spec anticipates).
-- Rules `MISSING_REF` only fires on connected PA/program calls; planted `MISSING_REF` is restricted to PA/program
-  calls so rule and label definitions coincide. Solid agents' random defect ∈ {UNPROFESSIONAL, MISSED_NEXT_STEP,
-  MISSING_REF (PA/program only)} — minor codes are derived-only, so not randomly planted.
-- Generator writes forms/cases/labels first (deterministic from seed), then renders transcripts, appending to
-  `transcripts.jsonl` as each finishes, so rules run immediately and re-runs skip rendered calls.
-- Transcript validation also requires the REP's name and (PA/program) the reference number to appear verbatim —
-  otherwise the form's rep_name/ref would be unverifiable. 1 retry, then template fallback (logged per call).
-- Judge cache `out/judge_raw.jsonl` is append-only; last line per call_id wins, so a failed live re-run keeps the old result.
-- Quote verification strips quotes/ellipses, normalises whitespace+case; a quote found in a different turn is
-  accepted and its turn index corrected. Failed checklist quotes have evidence nulled (not counted);
-  `evidence_failures` counts dropped defects only.
-- Validation universe = judged calls (so partial runs are comparable across layers). Extra outputs:
-  `out/validation_summary.json`, `out/agent_validation.csv`.
-- REDUNDANT_CALL ordering within a day uses `hour_of_day` then `call_id` (no minute-level timestamps exist).
-- **Label floor:** seed 42 planted 0 UNPROFESSIONAL and 1 MISSING_REF at the spec's probabilities, leaving those
-  judge codes unmeasurable. The generator now tops up each profile-driven code to >= 2 labels on eligible calls
-  of the matching profile (planted_by=profile).
-- Real data check: `call_id` embeds a precise UTC timestamp, so same-day REDUNDANT_CALL ordering is exact.
-  Picked agents match §3: AGT-01/02 under-20s share 14.5% / 12.6%; ramping AGT-03/04 over-hold ≈ 25%.
-- **Models:** `GEN_MODEL=claude-haiku-4-5-20251001`, `JUDGE_MODEL=claude-sonnet-5` (from `models.list()`).
-  anthropic SDK 1.x removed `temperature` from `messages.create()`; Haiku gets it via `extra_body` (0.8).
-  Sonnet 5 rejects non-default temperature, so the judge runs with `thinking: disabled` (required for forced
-  tool use) at default sampling.
-- Clean-call PHI leakage: the scenario card only includes address / member ID / diagnosis when PHI_DISCLOSURE
-  is planted (otherwise Haiku volunteered them on clean calls → judge false positives).
-- Transfer forms log the pharmacy Rx number as `reference_number` (the natural "reference" for a pharmacy
-  call); judge prompt defines reference_number per call type.
-- Judge prompt v2 (after a 3-call check): no STATUS_MISMATCH / MISSING_REF on no-rep calls (FAB_CONTACT
-  subsumes them); STATUS_MISMATCH must quote a REP turn (enforced in code, not just prompt).
-- Generation: 78/80 transcripts from Haiku; 2 fell back to templates after two validation failures
-  (t_sec out of range / reference number not spoken).
+- Git remote: `origin = github.com/prachitbhike/callcopilot` (private). `.env`, `.venv`, and raw `data/calls.xlsx`
+  (contains real agent emails) are gitignored. Everything else incl. `out/` and `data/*` is committed so the app demos offline.
+- **Model params:** Sonnet 5 rejects `temperature` and thinks by default; forced tool use requires thinking off.
+  `qa/llm.py::sampling_kwargs` sends `temperature` (0.8) to Haiku 4.5 via `extra_body` and `thinking: disabled` to Sonnet 5.
+- `OUTCOME_MAP` / `true_status` live in `qa/rules.py`; the generator imports them to derive `OUTCOME_VS_RX` labels.
+- Rules `MISSING_REF` only fires on connected PA/program calls; planted `MISSING_REF` is restricted to PA/program calls.
+  Solid agents' random defect ∈ {UNPROFESSIONAL, MISSED_NEXT_STEP, MISSING_REF (PA/program only)}.
+- Generator writes forms/cases/labels first (deterministic from seed), then renders transcripts, appending as each finishes.
+- Transcript validation requires the REP's name, the reference number (PA/program) and the pharmacy Rx number (transfer,
+  unless MISSED_NEXT_STEP is planted) to appear verbatim.
+- Judge cache `out/judge_raw.jsonl` is append-only; last line per call_id wins. It keeps v1–v6 history (useful for
+  prompt-version comparisons); `--force` re-judges everything.
+- Quote verification strips quotes/ellipses, normalises whitespace+case; a quote found in another turn is accepted and
+  its turn index corrected. `evidence_failures` counts dropped defects only.
+- Validation universe = judged calls. Extra outputs: `validation_summary.json`, `agent_validation.csv` per set.
+- REDUNDANT_CALL ordering within a day uses `hour_of_day` then `call_id` (call_id embeds a precise UTC timestamp).
+- Label floor: each profile-driven code is topped up to ≥ 2 planted labels on eligible calls of the matching profile.
+- Clean-call PHI leakage: the scenario card only includes address / member ID / diagnosis when PHI_DISCLOSURE is planted.
+- Transfer forms log the pharmacy Rx number as `reference_number`; the judge prompt defines reference_number per call type.
+- The spec's `score` formula is unchanged; `agent_score` (without process flags) is an additional column.
+- ENR_BV_RESULT applies only when enrolled (pending BV has no result to obtain); ENR_BRIDGE when enrolled or pending BV.
+- App nav uses a horizontal `st.radio` (not `st.tabs`) so buttons can switch to the Inspector programmatically.
+- Fixed: Streamlit `cache_data` ignores `_`-prefixed args, so the file-mtime cache key never invalidated; renamed.
+- Coaching card: forced `submit_card` tool; JSON-in-string repair + shape check with up to 3 attempts.

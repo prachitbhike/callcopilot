@@ -7,3 +7,4 @@ data/calls.xlsx
 *.xlsx
 .env.*
 !.env.example
+.venv
