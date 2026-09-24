@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 
-from qa.llm import sampling_kwargs
+from qa.llm import client_kwargs, sampling_kwargs
 from qa.rules import outcome_consistent, true_status
 
 load_dotenv()
@@ -520,7 +520,7 @@ async def render_all(scen, limit, no_llm, force):
             src["template"] = len(todo)
             return src
         from anthropic import AsyncAnthropic
-        client, sem, model = AsyncAnthropic(), asyncio.Semaphore(8), os.environ["GEN_MODEL"]
+        client, sem, model = AsyncAnthropic(**client_kwargs()), asyncio.Semaphore(8), os.environ["GEN_MODEL"]
 
         async def job(s):
             turns, how = await render_one(client, sem, s, model)

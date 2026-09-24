@@ -9,7 +9,8 @@ load_dotenv(".env.local")
 
 
 def main():
-    client = anthropic.Anthropic()
+    from qa.llm import client_kwargs
+    client = anthropic.Anthropic(**client_kwargs())
     ids = [m.id for m in client.models.list(limit=100)]  # newest first
     haiku = next(i for i in ids if "haiku" in i)
     sonnet = next(i for i in ids if "sonnet" in i)

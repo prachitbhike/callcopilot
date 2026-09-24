@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-from qa.llm import sampling_kwargs
+from qa.llm import client_kwargs, sampling_kwargs
 from qa.rules import load_inputs
 from qa.schemas import AuditSubmission, JudgeResult
 
@@ -162,7 +162,7 @@ async def judge_all(limit=None, force=False, no_llm=False, call_ids=None):
     model = os.environ.get("JUDGE_MODEL", "")
     if not no_llm:
         from anthropic import AsyncAnthropic
-        client, sem = AsyncAnthropic(), asyncio.Semaphore(8)
+        client, sem = AsyncAnthropic(**client_kwargs()), asyncio.Semaphore(8)
     results = dict(done)
 
     async def job(cid):
