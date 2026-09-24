@@ -12,11 +12,65 @@ SYN, OUT = Path(os.environ.get("SYN_DIR", "data/synthetic")), Path(os.environ.ge
 # Held-out set C (seed 11): generated after the prompt was frozen and judged exactly once. Set B (out/holdout, seed 7)
 # was used to tune the MISSED_NEXT_STEP rules between prompt v4 and v6, so it is a dev set, not a test set.
 HOLD_OUT = Path(os.environ.get("HOLDOUT_DIR", "out/holdout_c" if Path("out/holdout_c/validation_summary.json").exists() else "out/holdout"))
-SEV_COLOR = {"critical": "#d62728", "major": "#f0a202", "minor": "#9e9e9e"}
 SONNET_IN_PER_M, SONNET_OUT_PER_M = 2.0, 10.0  # claude-sonnet-5 list price per million tokens, checked 2026-09-24
+
+# ---- Forus brand tokens (pulled from forus.com: cream/ink base, blue link accent,
+# lavender announcement accent, Rosart serif headlines over ABC Diatype sans body) ----
+INK = "#1D1A1B"
+INK_SOFT = "#66645C"
+CREAM = "#F7F5F0"
+CARD = "#FFFFFF"
+BORDER = "#E5E1D6"
+BLUE = "#1863DC"
+LAVENDER = "#EDE4FF"
+LAVENDER_INK = "#4B3AA0"
+CRITICAL, CRITICAL_BG = "#B3261E", "#FBEAE8"
+MAJOR, MAJOR_BG = "#A9711F", "#FAF0DD"
+MINOR, MINOR_BG = "#78745F", "#EFEDE4"
+SEV_COLOR = {"critical": CRITICAL, "major": MAJOR, "minor": MINOR}
+SEV_BG = {"critical": CRITICAL_BG, "major": MAJOR_BG, "minor": MINOR_BG}
 FIELDS = ["spoke_with_rep", "rep_name", "reference_number", "outcome_status", "next_action"]
 
-st.set_page_config(page_title="Call Quality Copilot", layout="wide")
+st.set_page_config(page_title="Call Quality Copilot · Forus", layout="wide", page_icon="✚")
+
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"] {{ font-family: 'Inter', -apple-system, sans-serif; color: {INK}; }}
+.stApp {{ background: {CREAM}; }}
+h1, h2, h3 {{ font-family: 'Fraunces', Georgia, serif !important; font-weight: 500 !important; letter-spacing: -0.01em; color: {INK}; }}
+
+/* header band */
+.forus-header {{ background: {INK}; margin: -1rem -1rem 0 -1rem; padding: 1.35rem 2.5rem;
+  display: flex; align-items: baseline; gap: 0.9rem; }}
+.forus-header .wordmark {{ font-family: 'Fraunces', Georgia, serif; font-size: 1.5rem; color: {CREAM}; font-weight: 500; }}
+.forus-header .divider {{ width: 1px; height: 20px; align-self: center; background: rgba(247,245,240,0.3); }}
+.forus-header .product {{ font-family: 'Fraunces', Georgia, serif; font-size: 1.15rem; color: rgba(247,245,240,0.85); font-weight: 400; font-style: italic; }}
+.forus-banner {{ background: {LAVENDER}; color: {LAVENDER_INK}; margin: 0 -1rem 1.6rem -1rem; padding: 0.55rem 2.5rem;
+  font-size: 0.85rem; border-bottom: 1px solid {BORDER}; }}
+.forus-banner b {{ color: {INK}; }}
+
+/* tabs */
+.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 1px solid {BORDER}; }}
+.stTabs [data-baseweb="tab"] {{ font-family: 'Inter', sans-serif; font-weight: 500; color: {INK_SOFT}; }}
+.stTabs [aria-selected="true"] {{ color: {INK} !important; }}
+.stTabs [data-baseweb="tab-highlight"] {{ background-color: {BLUE} !important; }}
+
+/* metrics as cards */
+div[data-testid="stMetric"] {{ background: {CARD}; border: 1px solid {BORDER}; border-radius: 8px; padding: 0.9rem 1rem; }}
+div[data-testid="stMetricLabel"] {{ color: {INK_SOFT}; }}
+div[data-testid="stMetricValue"] {{ font-family: 'Fraunces', Georgia, serif; color: {INK}; }}
+
+/* buttons */
+.stButton > button {{ background: {INK}; color: {CREAM}; border: none; border-radius: 4px; font-weight: 500; }}
+.stButton > button:hover {{ background: {BLUE}; color: white; }}
+
+/* dataframes / expanders */
+div[data-testid="stDataFrame"], .streamlit-expanderHeader {{ border-radius: 6px; }}
+a {{ color: {BLUE}; }}
+</style>
+""", unsafe_allow_html=True)
 
 
 def mtime(p):
@@ -55,9 +109,11 @@ hold_summary = (json.loads((HOLD_OUT / "validation_summary.json").read_text())
                 if (HOLD_OUT / "validation_summary.json").exists() else {})
 ops = json.loads((OUT / "ops_summary.json").read_text()) if (OUT / "ops_summary.json").exists() else {}
 
-st.title("Call Quality Copilot")
-st.warning("**SYNTHETIC** transcripts and forms, seeded from the real Aug 2024 TaskUs call log (real durations, "
-           "destinations, Rx IDs; agents pseudonymised). Agent profiles are illustrative.")
+st.markdown("""<div class="forus-header"><div class="wordmark">Forus.</div><div class="divider"></div>
+    <div class="product">Call Quality Copilot</div></div>""", unsafe_allow_html=True)
+st.markdown("""<div class="forus-banner"><b>SYNTHETIC</b> transcripts and forms, seeded from the real Aug 2024
+    TaskUs call log (real durations, destinations, Rx IDs; agents pseudonymised). Agent profiles are illustrative.
+    </div>""", unsafe_allow_html=True)
 
 if scored.empty:
     st.error("No scored calls yet — run `make demo`.")
@@ -76,6 +132,16 @@ def open_call(cid):
 
 def pct(x):
     return "—" if x is None or x != x else f"{x:.0%}"
+
+
+def style_fig(fig):
+    fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                       font_family="Inter, sans-serif", font_color=INK,
+                       title_font_family="Fraunces, Georgia, serif", title_font_color=INK,
+                       margin=dict(t=48))
+    fig.update_xaxes(gridcolor=BORDER, zerolinecolor=BORDER)
+    fig.update_yaxes(gridcolor=BORDER, zerolinecolor=BORDER)
+    return fig
 
 
 # ---------------------------------------------------------------- Overview
@@ -115,14 +181,17 @@ if nav == "Overview":
         cnt = ag.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
         fig = px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
                      title="Agent-conduct defects by code", category_orders={"code": cnt.code.tolist()})
+        style_fig(fig)
         l.plotly_chart(fig, width="stretch")
         pr = md[md.kind == "process"].groupby("code").size().reset_index(name="count").sort_values("count", ascending=False)
         if not pr.empty:
-            figp = px.bar(pr, x="code", y="count", title="Process flags (dialer / workflow)", color_discrete_sequence=["#9e9e9e"])
+            figp = px.bar(pr, x="code", y="count", title="Process flags (dialer / workflow)", color_discrete_sequence=[MINOR])
+            style_fig(figp)
             mid.plotly_chart(figp, width="stretch")
     crit = scored.assign(crit=scored.n_critical > 0).groupby("call_type").crit.mean().reset_index()
-    fig2 = px.bar(crit, x="call_type", y="crit", title="Critical rate by call type", color_discrete_sequence=["#d62728"])
+    fig2 = px.bar(crit, x="call_type", y="crit", title="Critical rate by call type", color_discrete_sequence=[CRITICAL])
     fig2.update_yaxes(tickformat=".0%", title=None)
+    style_fig(fig2)
     r.plotly_chart(fig2, width="stretch")
     st.caption(f"Process flags (hold overrun, after-hours dial, repeat call) come from call metadata and are not agent conduct; "
                f"they count in the spec score but are tagged separately. Layer agreement (rules ∩ judge on FAB_CONTACT / "
@@ -168,8 +237,9 @@ if nav == "Call Inspector":
         chips = [("agent", call.agent_id), ("type", call.call_type), ("destination", call.destination_name),
                  ("duration", f"{call.duration_seconds}s"), ("ET", f"{int(call.et_hour)}:00"),
                  ("connected", "yes" if call.connected else "no"), ("case", call.case_ref)]
-        st.markdown(" ".join(f"<span style='background:#eef;border-radius:10px;padding:2px 8px;margin:2px;"
-                             f"display:inline-block;font-size:0.85em'><b>{k}</b> {html.escape(str(v))}</span>"
+        st.markdown(" ".join(f"<span style='background:{LAVENDER};color:{LAVENDER_INK};border-radius:10px;"
+                             f"padding:2px 8px;margin:2px;display:inline-block;font-size:0.85em'>"
+                             f"<b>{k}</b> {html.escape(str(v))}</span>"
                              for k, v in chips), unsafe_allow_html=True)
         cited = {}
         for m in res["merged_defects"]:
@@ -188,13 +258,13 @@ if nav == "Call Inspector":
             if t["i"] in cited and cited[t["i"]]:
                 border = f"border-left:5px solid {SEV_COLOR[cited[t['i']][0]['severity']]};"
             if t["speaker"] == "IVR":
-                style = "background:#f3f3f3;color:#777;font-style:italic;margin-right:20%"
+                style = f"background:{MINOR_BG};color:{INK_SOFT};font-style:italic;margin-right:20%"
             elif t["speaker"] == "AGENT":
-                style = "background:#dcf0ff;margin-left:20%"
+                style = f"background:#E8EFFC;margin-left:20%"
             else:
-                style = "background:#f0f0f0;margin-right:20%"
+                style = f"background:{CARD};border:1px solid {BORDER};margin-right:20%"
             bubbles.append(f"<div style='{style};{border}border-radius:8px;padding:6px 10px;margin:4px 0'>"
-                           f"<div style='font-size:0.7em;color:#888'>[{t['i']}] {t['speaker']} · {t['t_sec']}s{tags}</div>{text}</div>")
+                           f"<div style='font-size:0.7em;color:{INK_SOFT}'>[{t['i']}] {t['speaker']} · {t['t_sec']}s{tags}</div>{text}</div>")
         st.markdown(f"<div style='max-height:720px;overflow-y:auto'>{''.join(bubbles) or '<i>no transcript</i>'}</div>",
                     unsafe_allow_html=True)
 
@@ -224,7 +294,7 @@ if nav == "Call Inspector":
         def hl(row):
             bad = row["judge"] == "mismatch" or (row.name == "outcome_status" and "OUTCOME_VS_RX" in rule_codes) or \
                   (row.name == "spoke_with_rep" and "FAB_CONTACT" in rule_codes)
-            return ["background-color:#ffd6d6" if bad else ""] * len(row)
+            return [f"background-color:{CRITICAL_BG}" if bad else ""] * len(row)
         st.dataframe(diff.style.apply(hl, axis=1), width="stretch")
         filled = sum(1 for f in FIELDS if fc.get(f, {}).get("transcript_value") not in (None, "", "null"))
         st.caption(f"Middle column = the judge's extraction from the transcript, effectively an auto-drafted form: "
@@ -242,11 +312,11 @@ if nav == "Call Inspector":
             st.success("No defects.")
         for m in sorted(res["merged_defects"], key=lambda m: ["critical", "major", "minor"].index(m["severity"])):
             q = f"“{html.escape(m['quote'])}”" if m.get("quote") else html.escape(m.get("reason") or "")
-            kind_tag = ("<span style='background:#8a8a8a;color:white;border-radius:4px;padding:1px 6px' "
+            kind_tag = (f"<span style='background:{MINOR};color:white;border-radius:4px;padding:1px 6px' "
                         "title='dialer / workflow flag from call metadata, not agent conduct'>process</span> "
                         if m.get("kind") == "process" else "")
             st.markdown(f"<span style='background:{SEV_COLOR[m['severity']]};color:white;border-radius:4px;padding:1px 6px'>"
-                        f"{m['severity']}</span> <span style='background:#555;color:white;border-radius:4px;padding:1px 6px'>"
+                        f"{m['severity']}</span> <span style='background:{INK_SOFT};color:white;border-radius:4px;padding:1px 6px'>"
                         f"{m['source']}</span> {kind_tag}**{m['code']}** · conf {m.get('confidence', 1):.2f}<br>"
                         f"<span style='font-size:0.9em'>{q}</span>", unsafe_allow_html=True)
         if res.get("agent_score") is not None and res["agent_score"] != res["score"]:
@@ -309,8 +379,8 @@ if nav == "Agents":
             st.success("No defects for this agent.")
         else:
             cnt = mix.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
-            st.plotly_chart(px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
-                                   title=f"{ag} defect mix", category_orders={"code": cnt.code.tolist()}),
+            st.plotly_chart(style_fig(px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
+                                             title=f"{ag} defect mix", category_orders={"code": cnt.code.tolist()})),
                             width="stretch")
         st.markdown("**3 worst calls**")
         for row in g.sort_values("score").head(3).itertuples():
@@ -410,19 +480,21 @@ if nav == "Operations":
             oh = oh.copy()
             oh["window"] = oh.et_hour.map(lambda h: "after hours" if h >= 19 or h < 8 else "business hours")
             fig = px.bar(oh, x="et_hour", y="under20_share", color="window", hover_data=["calls"],
-                         color_discrete_map={"after hours": "#d62728", "business hours": "#9e9e9e"},
+                         color_discrete_map={"after hours": CRITICAL, "business hours": MINOR},
                          title="Share of calls under 20 s by hour (ET)")
             fig.update_yaxes(tickformat=".0%", title=None)
             fig.update_xaxes(title="hour of day, ET")
+            style_fig(fig)
             l.plotly_chart(fig, width="stretch")
         if not oa.empty:
             fig3 = px.scatter(oa, x="over_limit_share", y="under20_share", size="calls", color="cohort", text="agent",
                               hover_data=["calls", "after_hours_share", "repeat_dial_share"],
-                              color_discrete_map={"tenured": "#4c72b0", "new (from Aug 20)": "#f0a202"},
+                              color_discrete_map={"tenured": BLUE, "new (from Aug 20)": MAJOR},
                               title="Agents: hold-limit breaches vs short calls (bubble = volume)")
             fig3.update_traces(textposition="top center", textfont_size=9)
             fig3.update_xaxes(tickformat=".0%", title="share of calls over the hold limit")
             fig3.update_yaxes(tickformat=".0%", title="share of calls under 20 s")
+            style_fig(fig3)
             r.plotly_chart(fig3, width="stretch")
         st.caption(f"Under-20 s share is {ops['under20_share_9_17']:.1%} during 9–17 ET and {ops['under20_share_19_20']:.1%} at 19–20 ET: "
                    "evening dials mostly reach closed destinations. AGT-01..08 are the agents sampled for the judge demo. "
@@ -473,7 +545,7 @@ if nav == "Validation":
         which = cols[1].radio("Set", ["in-sample", "held-out"], horizontal=True) if not hold_val.empty else "in-sample"
         src_val = val if which == "in-sample" else hold_val
         v = src_val[src_val.view == view].drop(columns="view")
-        st.dataframe(v.style.apply(lambda r: ["background-color:#ffe5e5" if r.severity == "critical" else ""] * len(r), axis=1)
+        st.dataframe(v.style.apply(lambda r: [f"background-color:{CRITICAL_BG}" if r.severity == "critical" else ""] * len(r), axis=1)
                      .format({"precision": "{:.2f}", "recall": "{:.2f}", "f1": "{:.2f}"}, na_rep="—"),
                      hide_index=True, width="stretch")
     for fname in ("stability_focus.json", "stability.json"):
