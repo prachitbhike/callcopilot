@@ -5,8 +5,11 @@
 transcripts (78 LLM, 2 template fallback) → deterministic forms/cases/labels → rules (100% of calls) →
 Sonnet 5 judge (80/80, prompt v3) → merge/score → validation → Streamlit app (Overview / Inspector / Validation,
 live re-judge verified).
-**Stubbed / not done:** stretch Steps 7–9 (agents tab + coaching cards, review queue, stability run);
-`--stability` flag is parsed but not implemented; `human_labels.csv` agreement is coded but untested.
+**Stretch (Steps 7–9) done:** Agents page (table sorted by criticals, defect mix, 3 worst calls → Inspector,
+Sonnet coaching cards cached in `out/coaching_cards.jsonl` for all 8 agents); Review Queue (criticals first then
+lowest confidence; Confirm / Reject / Change code → `out/human_labels.csv`; Validation page shows judge-vs-human
+agreement); stability (`make stability`, results in `out/stability.json`).
+**Not done / stubbed:** no human verdicts are shipped (the queue starts empty; test clicks were deleted).
 
 **Planted labels (80 calls, 45 clean):** AFTER_HOURS 13 · HOLD_OVERRUN 11 · OUTCOME_VS_RX 6 · PHI_DISCLOSURE 5 ·
 MISSED_NEXT_STEP 5 · FAB_CONTACT 4 · STATUS_MISMATCH 4 · REDUNDANT_CALL 4 · MISSING_REF 2 · UNPROFESSIONAL 2.
@@ -17,6 +20,12 @@ failed) · layer agreement 1.00 · Spearman ρ(profile badness, score) = −0.63
 set, so v3 numbers are in-sample. v2 (pre-tuning) headline: critical recall 1.00, clean-call FP 0.22, evidence
 validity 1.00 (0/33), ρ −0.59 (`out/validation_summary_v2.json`, `out/validation_v2.csv`). v2 FPs were mostly
 spec ambiguity (transfer "received" with back-order/insurance-reject blockers; conditional checklist items).
+
+**Stability (Step 9, 15 calls × 3 Sonnet re-runs, prompt v3):** run 1: 100% identical defect sets (only 3 judge
+defect decisions in the sample); run 2: 13/15 calls identical, 50% of 4 (call, code) decisions identical, score
+std-dev mean 0.9 (max 7.1 — one MISSED_NEXT_STEP flipping), checklist results 99% identical (144 items),
+form_check verdicts 88% identical (75 fields). Debrief line: judge is stable on criticals; residual variance sits
+in the judgement-heavy major code MISSED_NEXT_STEP and in "unverifiable vs mismatch" form-field calls.
 
 Launch: `make app` (= `.venv/bin/streamlit run app.py`).
 
@@ -62,3 +71,6 @@ Launch: `make app` (= `.venv/bin/streamlit run app.py`).
   subsumes them); STATUS_MISMATCH must quote a REP turn (enforced in code, not just prompt).
 - Generation: 78/80 transcripts from Haiku; 2 fell back to templates after two validation failures
   (t_sec out of range / reference number not spoken).
+- App nav uses a horizontal `st.radio` (not `st.tabs`) so buttons can switch to the Inspector programmatically.
+- Fixed: Streamlit `cache_data` ignores `_`-prefixed args, so the file-mtime cache key never invalidated; renamed.
+- Coaching card: forced `submit_card` tool; JSON-in-string repair + shape check with up to 3 attempts.

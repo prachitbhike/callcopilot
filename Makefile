@@ -1,6 +1,6 @@
 PY := .venv/bin/python
 
-.PHONY: data rules judge validate app demo
+.PHONY: data rules judge validate app demo coach stability
 
 data:
 	$(PY) -m gen.generate
@@ -19,3 +19,9 @@ app:
 
 demo: data rules judge validate
 	@echo "Launch the app with: make app"
+
+coach:
+	$(PY) -m qa.coach
+
+stability:
+	$(PY) -m qa.validate --stability 15 --runs 3

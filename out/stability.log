@@ -1,0 +1,1 @@
+Stability (claude-sonnet-5, v3): 15 calls x 3 runs -> 50% of 4 (call, code) judge decisions identical across runs; 87% of calls had identical defect sets; score std-dev mean 0.9 (max 7.1); checklist results identical 99% of 144; form_check verdicts identical 88% of 75.
