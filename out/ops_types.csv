@@ -1,0 +1,4 @@
+call_type,calls,under20_share,overrun_share,mean_duration_s,after_hours_share,hold_limit_s
+pa_plan_call,963,0.1485,0.1111,433.2004,0.0498,900
+patient_access_check,1046,0.0411,0.0411,379.3499,0.0784,900
+transfer_confirm_call,6285,0.0614,0.0934,228.5106,0.0883,420

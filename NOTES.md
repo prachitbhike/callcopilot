@@ -71,6 +71,29 @@ Launch: `make app` (= `.venv/bin/streamlit run app.py`). Held-out set: `make hol
   auto-draft caption counts pre-fillable fields; Streamlit `cache_data` key fix (underscore args are ignored).
 - Re-rendered the robotic template transcript (939 s Dupixent MyWay call) and the ISO-date CVS call.
 
+## Phase 2 (same day, after merging `build/steps-0-5`)
+- **Operations page** (`qa/ops.py` → `out/ops_*.{json,csv}`): Layer 1 rules on the real August log, no transcripts needed.
+  8,294 calls · 25 agents pseudonymised (AGT-01..08 = the judge-demo agents, others `agent-09..25` by volume) · 447
+  destinations. After-hours dials 685 (8.3%); hold overruns 737 (8.9%, 43 h excess); calls under 20 s 572 (6.9%, 122 at
+  0 s); repeat dials by the same agent to the same number on the same day 2,457 (30%, an upper bound: no case ref in the
+  log); 1.32 transfer calls per transferred Rx; under-20 s share 6.1% during 9–17 ET vs 14.0% at 19–20 ET; new cohort
+  (first call ≥ Aug 20) over the hold limit on 23.4% of calls vs 12.5% for tenured agents on the same dates. Real agent
+  emails never leave `qa/ops.py`; the xlsx stays gitignored and the committed aggregates carry no identifiers.
+- **Overview leads with impact:** fabricated contacts, status contradictions, PHI over-disclosures, calls needing a human
+  (13 of 80, −84% listening); second row = audit quality incl. held-out critical recall and clean-call FP rate; agent-conduct
+  defects and process flags charted separately; **Cost & scale** panel from measured usage: ≈ 4.9k in / 1.2k out tokens,
+  ≈ $0.022 per call, ≈ $180 per month at the real August volume, ≈ 9 s latency, 3.5 / 5 form fields auto-fillable on
+  connected calls (≈ 690 agent-hours a month of form entry addressable at 5 min per call).
+- **Inspector:** "Auto-drafted form" card renders the judge's typed transcript values as a disabled form under the three-way diff.
+- **Coaching cards** regenerated on v6 results with process flags excluded from the evidence (hold time and evening dials are
+  not coaching material); cards for defect-free agents fall back to forward-looking habits, not invented incidents.
+- **Stability on v6** (`make stability`, 15 random calls × 3 runs): 100% identical defect sets, checklist items identical
+  97% of 171, form-field verdicts identical 97% of 75, score std-dev 0.0. The random sample held only 2 judge decisions, so
+  `qa.validate --stability 15 --runs 3 --focus` re-judges the 15 calls with the most judge defects instead:
+  100% of 17 (call, code) judge decisions identical across runs, 100% identical defect sets, checklist items identical
+  97% of 172, form-field verdicts identical 96% of 75, score std-dev 0.0 (`out/stability_focus.json`).
+- Validation page shows both stability runs; Makefile gained `verify`, `holdout`, `coach`, `stability`.
+
 ## Honest caveats for the debrief
 - Set A numbers are in-sample by construction; quote **set C**. Set B was consumed by tuning.
 - MISSED_NEXT_STEP is the judgement-heavy code: recall is solid, precision on C is 0.40 (3 FPs, all defensible strictness).

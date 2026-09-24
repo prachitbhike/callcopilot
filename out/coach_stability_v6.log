@@ -1,0 +1,9 @@
+AGT-01: 14 defects · fix: ['Logging outcomes (received/approved/enrolled) that', 'Recording calls as completed with a live rep when ']
+AGT-02: 5 defects · fix: ['Logging spoke_with_rep=True with a rep name/refere', 'Placing transfer/access calls outside business hou']
+AGT-03: 11 defects · fix: ['Recording call outcomes that contradict what you j', 'Getting approval/denial details but not capturing ']
+AGT-04: 5 defects · fix: ['Update PA outcome status on the form to match what', 'When a denial is given, ask about re-application o']
+AGT-05: 7 defects · fix: ['Sighing and speaking curtly to reps when frustrate', 'Not asking about re-application or appeal options ']
+AGT-06: 9 defects · fix: ['Volunteering full DOB, address, and diagnosis befo', 'Letting hold time run far past limit (965s vs 420s']
+AGT-07: 3 defects · fix: ['Confirming transfer receipt and RX number only 3 o', 'Three calls placed at 20:00 ET, outside normal cal']
+AGT-08: 2 defects · fix: ['Not confirming transaction/reference number receiv', 'Holds running well past limit (637s vs 420s cap; 1']
+Stability (claude-sonnet-5, v6): 15 calls x 3 runs -> 100% of 2 (call, code) judge decisions identical across runs; 100% of calls had identical defect sets; score std-dev mean 0.0 (max 0.0); checklist results identical 97% of 171; form_check verdicts identical 97% of 75.

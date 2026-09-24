@@ -16,7 +16,8 @@ CARDS = OUT / "coaching_cards.jsonl"
 SYSTEM = """You are a call-quality coach for an offshore BPO team placing outbound calls to insurance plans,
 manufacturer programs and pharmacies on behalf of Forus. From one agent's audited defects (with verbatim
 quotes), draft a short, specific, respectful coaching card addressed to the agent. Use only the evidence given;
-quote it exactly. Submit via the submit_card tool."""
+quote it exactly. If the agent has fewer than two defects, the remaining "fix" items should be forward-looking habits
+grounded in the checklist items they passed least often, not invented incidents. Submit via the submit_card tool."""
 
 TOOL = {"name": "submit_card", "description": "Submit the coaching card.",
         "input_schema": {"type": "object", "required": ["strengths", "fix", "practice_line"], "properties": {
@@ -46,6 +47,8 @@ def evidence_for(agent_id, results):
         if r["agent_id"] != agent_id:
             continue
         for m in r["merged_defects"]:
+            if m.get("kind") == "process":
+                continue  # hold overruns / after-hours dials / repeat calls are dialer & workflow issues, not coaching material
             rows.append({"call_type": r["call_type"], "code": m["code"], "severity": m["severity"],
                          "source": m["source"], "quote": m.get("quote"), "reason": m.get("reason")})
         passes += [c["item_id"] for c in r.get("checklist", []) if c["result"] == "pass"]

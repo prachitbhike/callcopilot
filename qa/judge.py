@@ -150,8 +150,9 @@ def stub_result(call, form):
 def _repair(inp):
     """Sonnet occasionally serialises the whole audit (or a list) as a JSON string inside one field, or omits
     whole fields on IVR-only calls; strict tool use should prevent both, this is the belt to its braces."""
-    for k, v in (("checklist", []), ("defects", []), ("form_check", []), ("coaching_note", ""), ("needs_human_review", False)):
-        inp.setdefault(k, list(v) if isinstance(v, list) else v)
+    if "checklist" in inp:  # audit payload (qa.coach reuses _repair for coaching cards, which must not get these keys)
+        for k, v in (("defects", []), ("form_check", []), ("coaching_note", ""), ("needs_human_review", False)):
+            inp.setdefault(k, list(v) if isinstance(v, list) else v)
     for k, v in list(inp.items()):
         if isinstance(v, str) and v.lstrip()[:1] in "[{":
             try:

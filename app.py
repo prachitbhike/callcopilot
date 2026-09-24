@@ -13,6 +13,7 @@ SYN, OUT = Path(os.environ.get("SYN_DIR", "data/synthetic")), Path(os.environ.ge
 # was used to tune the MISSED_NEXT_STEP rules between prompt v4 and v6, so it is a dev set, not a test set.
 HOLD_OUT = Path(os.environ.get("HOLDOUT_DIR", "out/holdout_c" if Path("out/holdout_c/validation_summary.json").exists() else "out/holdout"))
 SEV_COLOR = {"critical": "#d62728", "major": "#f0a202", "minor": "#9e9e9e"}
+SONNET_IN_PER_M, SONNET_OUT_PER_M = 2.0, 10.0  # claude-sonnet-5 list price per million tokens, checked 2026-09-24
 FIELDS = ["spoke_with_rep", "rep_name", "reference_number", "outcome_status", "next_action"]
 
 st.set_page_config(page_title="Call Quality Copilot", layout="wide")
@@ -50,6 +51,9 @@ forms = {f["call_id"]: f for f in jl("forms.jsonl", SYN)}
 cases = {c["case_ref"]: c for c in jl("cases.jsonl", SYN)}
 tx = {t["call_id"]: t["turns"] for t in jl("transcripts.jsonl", SYN)}
 summary = json.loads((OUT / "validation_summary.json").read_text()) if (OUT / "validation_summary.json").exists() else {}
+hold_summary = (json.loads((HOLD_OUT / "validation_summary.json").read_text())
+                if (HOLD_OUT / "validation_summary.json").exists() else {})
+ops = json.loads((OUT / "ops_summary.json").read_text()) if (OUT / "ops_summary.json").exists() else {}
 
 st.title("Call Quality Copilot")
 st.warning("**SYNTHETIC** transcripts and forms, seeded from the real Aug 2024 TaskUs call log (real durations, "
@@ -59,7 +63,7 @@ if scored.empty:
     st.error("No scored calls yet — run `make demo`.")
     st.stop()
 
-PAGES = ["Overview", "Call Inspector", "Agents", "Review Queue", "Validation"]
+PAGES = ["Overview", "Call Inspector", "Agents", "Review Queue", "Operations", "Validation"]
 st.session_state.setdefault("nav", "Overview")
 nav = st.radio("View", PAGES, key="nav", horizontal=True, label_visibility="collapsed")
 
@@ -76,29 +80,72 @@ def pct(x):
 
 # ---------------------------------------------------------------- Overview
 if nav == "Overview":
+    def n_calls_with(*codes):
+        return int(sum(any(m["code"] in codes for m in r["merged_defects"]) for r in results.values()))
+
+    review = int(scored.needs_human_review.sum())
     c = st.columns(5)
-    c[0].metric("Calls scored", f"{len(scored)}", help=f"{int(scored.judged.sum())} judged by LLM")
-    c[1].metric("% calls with a critical", pct((scored.n_critical > 0).mean()))
-    c[2].metric("Mean score", f"{scored.score.mean():.1f}")
-    c[3].metric("Form accuracy", pct(scored.form_accuracy.mean()),
+    c[0].metric("Calls audited", f"{len(scored)}", help=f"rules ran on all; {int(scored.judged.sum())} judged by the LLM")
+    c[1].metric("Fabricated contacts", n_calls_with("FAB_CONTACT"),
+                help="form claims a rep conversation on a call that never got past the IVR")
+    c[2].metric("Status contradictions", n_calls_with("STATUS_MISMATCH", "OUTCOME_VS_RX"),
+                help="form outcome contradicts what the rep said (judge) or the system of record (rules)")
+    c[3].metric("PHI over-disclosures", n_calls_with("PHI_DISCLOSURE"),
+                help="agent volunteered DOB / address / diagnosis / member ID before the rep asked")
+    c[4].metric("Calls needing a human", f"{review} of {len(scored)}", delta=f"-{1 - review / len(scored):.0%} listening",
+                delta_color="inverse", help="every call with a critical flag; the rest are auditable from the flags alone")
+    q = st.columns(5)
+    q[0].metric("Mean score", f"{scored.score.mean():.1f}", help="spec score: 100 − 40·critical − 15·major − 5·minor")
+    q[1].metric("Form accuracy", pct(scored.form_accuracy.mean()),
                 help="share of verifiable form fields the transcript supports; fields the transcript cannot verify "
                      "(e.g. outcome on a no-answer call) are excluded")
-    c[4].metric("Evidence validity", pct(summary.get("evidence_validity")), help="judge quotes found verbatim in the transcript")
+    q[2].metric("Evidence validity", pct(summary.get("evidence_validity")), help="judge quotes found verbatim in the transcript")
+    q[3].metric("Critical recall · held-out", pct(hold_summary.get("critical_recall")),
+                help="planted criticals caught on calls never used for prompt tuning (Validation page)")
+    q[4].metric("Clean-call FP rate · held-out", pct(hold_summary.get("clean_call_fp_rate")),
+                help="zero-label held-out calls that received a major or critical flag")
+
     md = pd.DataFrame([{**m, "call_id": r["call_id"], "call_type": r["call_type"]}
                        for r in results.values() for m in r["merged_defects"]])
-    l, r = st.columns([2, 1])
+    if not md.empty and "kind" not in md:
+        md["kind"] = "agent"
+    l, mid, r = st.columns([2, 1, 1])
     if not md.empty:
-        cnt = md.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
+        ag = md[md.kind == "agent"]
+        cnt = ag.groupby(["code", "severity"]).size().reset_index(name="count").sort_values("count", ascending=False)
         fig = px.bar(cnt, x="code", y="count", color="severity", color_discrete_map=SEV_COLOR,
-                     title="Defects by code", category_orders={"code": cnt.code.tolist()})
+                     title="Agent-conduct defects by code", category_orders={"code": cnt.code.tolist()})
         l.plotly_chart(fig, width="stretch")
-        src = md.groupby(["code", "source"]).size().reset_index(name="n")
+        pr = md[md.kind == "process"].groupby("code").size().reset_index(name="count").sort_values("count", ascending=False)
+        if not pr.empty:
+            figp = px.bar(pr, x="code", y="count", title="Process flags (dialer / workflow)", color_discrete_sequence=["#9e9e9e"])
+            mid.plotly_chart(figp, width="stretch")
     crit = scored.assign(crit=scored.n_critical > 0).groupby("call_type").crit.mean().reset_index()
     fig2 = px.bar(crit, x="call_type", y="crit", title="Critical rate by call type", color_discrete_sequence=["#d62728"])
     fig2.update_yaxes(tickformat=".0%", title=None)
     r.plotly_chart(fig2, width="stretch")
-    st.caption(f"Layer agreement (rules ∩ judge on FAB_CONTACT / MISSING_REF): {pct(summary.get('layer_agreement'))} · "
-               f"calls needing human review: {int(scored.needs_human_review.sum())}")
+    st.caption(f"Process flags (hold overrun, after-hours dial, repeat call) come from call metadata and are not agent conduct; "
+               f"they count in the spec score but are tagged separately. Layer agreement (rules ∩ judge on FAB_CONTACT / "
+               f"MISSING_REF): {pct(summary.get('layer_agreement'))}.")
+
+    st.subheader("Cost & scale")
+    tin, tout, lat = scored.input_tokens.mean(), scored.output_tokens.mean(), scored.latency_s.mean()
+    monthly = int(ops.get("calls", 8294))
+    if tin == tin:
+        per_call = tin / 1e6 * SONNET_IN_PER_M + tout / 1e6 * SONNET_OUT_PER_M
+        k = st.columns(5)
+        k[0].metric("Judge tokens / call", f"{tin / 1000:.1f}k in · {tout / 1000:.1f}k out", help="measured from API usage on the judged calls")
+        k[1].metric("Judge cost / call", f"${per_call:.3f}",
+                    help=f"claude-sonnet-5 list price ${SONNET_IN_PER_M:.0f} / ${SONNET_OUT_PER_M:.0f} per M tokens; before prompt caching")
+        k[2].metric(f"Per month at {monthly:,} calls", f"${per_call * monthly:,.0f}", help="August 2024 volume from the real call log")
+        k[3].metric("Latency / call", f"{lat:.0f} s", help="wall-clock per judge call at 8 concurrent requests")
+        conn = scored[scored.connected.astype(str) == "True"]
+        k[4].metric("Form fields auto-fillable", f"{conn.auto_fill_fields.mean():.1f} / 5",
+                    help="on connected calls: fields the judge extracted from the transcript, i.e. a pre-filled form")
+        st.caption(f"Reviewing only flagged calls cuts listening by {1 - review / len(scored):.0%}. The debrief measured about 5 minutes of "
+                   f"form entry per call, ≈ {monthly * 5 / 60:,.0f} agent-hours a month at this volume that the auto-draft can pre-fill.")
+    else:
+        st.caption("Token usage appears after a judge run with prompt v4 or later.")
 
 # ---------------------------------------------------------------- Inspector
 if nav == "Call Inspector":
@@ -182,6 +229,13 @@ if nav == "Call Inspector":
         filled = sum(1 for f in FIELDS if fc.get(f, {}).get("transcript_value") not in (None, "", "null"))
         st.caption(f"Middle column = the judge's extraction from the transcript, effectively an auto-drafted form: "
                    f"{filled}/{len(FIELDS)} fields pre-fillable from this call.")
+        with st.expander("Auto-drafted form (what the transcript supports)"):
+            dc = st.columns(2)
+            for i, f in enumerate(FIELDS):
+                tv = fc.get(f, {}).get("transcript_value")
+                dc[i % 2].text_input(f, value="" if tv in (None, "", "null") else str(tv), disabled=True, key=f"draft_{cid}_{f}")
+            st.caption("In production this draft pre-fills the agent's form; the agent confirms or corrects instead of typing. "
+                       "Empty = the transcript did not establish the value.")
 
         st.subheader(f"Defects · score {res['score']}")
         if not res["merged_defects"]:
@@ -327,6 +381,66 @@ if nav == "Review Queue":
                 if nc != "—":
                     cols[3].button(f"Change → {nc}", key=f"x_{k}", on_click=record, args=(cid, m["code"], "change", nc))
 
+# ---------------------------------------------------------------- Operations (real log, rules only)
+if nav == "Operations":
+    oa, oh, ot = csv("ops_agents.csv"), csv("ops_hours.csv"), csv("ops_types.csv")
+    if not ops:
+        st.info("Run `python -m qa.ops` with data/calls.xlsx present to build the real-log aggregates.")
+    else:
+        st.markdown(f"**Layer 1 on the real August 2024 log** · {ops['calls']:,} calls · {ops['agents']} agents (pseudonymised) · "
+                    f"{ops['destinations']} destinations · {ops['hours_on_calls']:,.0f} hours on calls. Rules only, no transcripts: "
+                    "these run today on the dialer export.")
+        k = st.columns(6)
+        k[0].metric("After-hours dials", f"{ops['after_hours']:,}", f"{ops['after_hours_share']:.1%} of calls", delta_color="off",
+                    help="placed at or after 7 pm or before 8 am ET")
+        k[1].metric("Hold overruns", f"{ops['overrun']:,}", f"{ops['overrun_share']:.1%} · {ops['excess_hold_hours']:.0f} h excess",
+                    delta_color="off", help="duration > hold limit + 60 s (420 s transfer, 900 s PA / program)")
+        k[2].metric("Calls under 20 s", f"{ops['under20']:,}", f"{ops['under20_share']:.1%} · {ops['zero_s']} at 0 s", delta_color="off",
+                    help="never reached a rep; the sampling signal behind FAB_CONTACT")
+        k[3].metric("Repeat dials", f"{ops['repeat_dials']:,}", f"{ops['repeat_dial_share']:.0%} · upper bound", delta_color="off",
+                    help="2nd+ call by the same agent to the same number on the same day; the log has no case reference, "
+                         "so a shared pharmacy line counts as a repeat")
+        k[4].metric("Transfer calls per Rx", f"{ops['transfer_calls_per_rx']:.2f}",
+                    help=f"{ops['transfer_calls']:,} transfer-confirm calls for {ops['rx_transferred']:,} transferred prescriptions")
+        k[5].metric("New cohort over hold limit", f"{ops['new_cohort_over_limit_share']:.0%}",
+                    f"vs {ops['tenured_over_limit_share_same_dates']:.1%} tenured, same dates", delta_color="off",
+                    help=f"{ops['new_cohort_agents']} agents whose first call is on or after Aug 20")
+        l, r = st.columns([1, 1])
+        if not oh.empty:
+            oh = oh.copy()
+            oh["window"] = oh.et_hour.map(lambda h: "after hours" if h >= 19 or h < 8 else "business hours")
+            fig = px.bar(oh, x="et_hour", y="under20_share", color="window", hover_data=["calls"],
+                         color_discrete_map={"after hours": "#d62728", "business hours": "#9e9e9e"},
+                         title="Share of calls under 20 s by hour (ET)")
+            fig.update_yaxes(tickformat=".0%", title=None)
+            fig.update_xaxes(title="hour of day, ET")
+            l.plotly_chart(fig, width="stretch")
+        if not oa.empty:
+            fig3 = px.scatter(oa, x="over_limit_share", y="under20_share", size="calls", color="cohort", text="agent",
+                              hover_data=["calls", "after_hours_share", "repeat_dial_share"],
+                              color_discrete_map={"tenured": "#4c72b0", "new (from Aug 20)": "#f0a202"},
+                              title="Agents: hold-limit breaches vs short calls (bubble = volume)")
+            fig3.update_traces(textposition="top center", textfont_size=9)
+            fig3.update_xaxes(tickformat=".0%", title="share of calls over the hold limit")
+            fig3.update_yaxes(tickformat=".0%", title="share of calls under 20 s")
+            r.plotly_chart(fig3, width="stretch")
+        st.caption(f"Under-20 s share is {ops['under20_share_9_17']:.1%} during 9–17 ET and {ops['under20_share_19_20']:.1%} at 19–20 ET: "
+                   "evening dials mostly reach closed destinations. AGT-01..08 are the agents sampled for the judge demo. "
+                   "Short calls are a sampling signal, not proof of fabrication: the judge confirms on transcripts.")
+        if not oa.empty:
+            show = oa[["agent", "cohort", "calls", "first_call", "under20_share", "zero_s_calls", "over_limit_share", "overrun_share",
+                       "excess_hold_min", "after_hours_share", "repeat_dial_share", "in_judge_sample"]].copy()
+            for col in ["under20_share", "over_limit_share", "overrun_share", "after_hours_share", "repeat_dial_share"]:
+                show[col] = show[col].map("{:.1%}".format)
+            show["excess_hold_min"] = show.excess_hold_min.round(0).astype(int)
+            st.dataframe(show, hide_index=True, width="stretch")
+        if not ot.empty:
+            ot2 = ot.copy()
+            for col in ["under20_share", "overrun_share", "after_hours_share"]:
+                ot2[col] = ot2[col].map("{:.1%}".format)
+            ot2["mean_duration_s"] = ot2.mean_duration_s.round(0).astype(int)
+            st.dataframe(ot2, hide_index=True, width="stretch")
+
 # ---------------------------------------------------------------- Validation
 if nav == "Validation":
     val = csv("validation.csv")
@@ -362,6 +476,15 @@ if nav == "Validation":
         st.dataframe(v.style.apply(lambda r: ["background-color:#ffe5e5" if r.severity == "critical" else ""] * len(r), axis=1)
                      .format({"precision": "{:.2f}", "recall": "{:.2f}", "f1": "{:.2f}"}, na_rep="—"),
                      hide_index=True, width="stretch")
+    for fname in ("stability_focus.json", "stability.json"):
+        stab = json.loads((OUT / fname).read_text()) if (OUT / fname).exists() else {}
+        if stab:
+            st.markdown(f"**Stability** · {stab['calls']} calls ({stab.get('selection', 'random')}) × {stab['runs']} judge runs, "
+                        f"prompt {stab.get('prompt_version')}: {stab['calls_with_identical_defect_sets']:.0%} of calls got identical "
+                        f"defect sets · {stab['identical_code_decisions']:.0%} of {stab['judge_code_decisions']} (call, code) decisions "
+                        f"identical · checklist items identical {stab['checklist_items_identical']:.0%} of {stab['checklist_items']} · "
+                        f"form-field verdicts identical {stab['form_fields_identical']:.0%} of {stab['form_fields']} · "
+                        f"score std-dev mean {stab['mean_score_std']:.1f} (max {stab['max_score_std']:.1f}).")
     st.subheader("Agents — hidden ground truth")
     ag = csv("agent_validation.csv")
     if not ag.empty:

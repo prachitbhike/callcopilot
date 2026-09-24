@@ -115,8 +115,10 @@ def compute():
     return val, headline, ag, human
 
 
-def stability(n, runs, seed=7):
-    """Re-judge n random calls `runs` times (no cache writes); report decision agreement + score std-dev."""
+def stability(n, runs, seed=7, focus=False):
+    """Re-judge n calls `runs` times (no cache writes); report decision agreement + score std-dev.
+    focus=True picks the n calls with the most judge defects instead of a random sample, so the agreement figure
+    covers real decisions rather than mostly-clean calls."""
     import asyncio
     import os
     import random
@@ -129,7 +131,11 @@ def stability(n, runs, seed=7):
     sample, forms, cases, tx = load_inputs()
     flags = run_rules(sample, forms, cases, tx)
     calls = {r["call_id"]: r for r in sample.to_dict("records")}
-    ids = random.Random(seed).sample(sorted(calls), n)
+    if focus:
+        res = {r["call_id"]: r for r in load_results()}
+        ids = sorted(calls, key=lambda c: (-len(res.get(c, {}).get("defects", [])), c))[:n]
+    else:
+        ids = random.Random(seed).sample(sorted(calls), n)
     model = os.environ["JUDGE_MODEL"]
 
     async def go():
@@ -163,14 +169,15 @@ def stability(n, runs, seed=7):
     same = [all(k in d for d in decisions[c]) for c, k in pairs]
     identical_calls = np.mean([all(d == decisions[c][0] for d in decisions[c]) for c in ids])
     sd = np.mean([np.std(v) for v in scores.values()])
-    out = {"calls": n, "runs": runs, "judge_code_decisions": len(pairs),
+    out = {"calls": n, "runs": runs, "selection": "most judge defects" if focus else f"random (seed {seed})",
+           "judge_code_decisions": len(pairs),
            "identical_code_decisions": float(np.mean(same)) if same else 1.0,
            "calls_with_identical_defect_sets": float(identical_calls), "mean_score_std": float(sd),
            "max_score_std": float(max(np.std(v) for v in scores.values())), "model": model,
            "prompt_version": judge.PROMPT_VERSION,
            "checklist_items_identical": ck_agree, "checklist_items": ck_n,
            "form_fields_identical": fc_agree, "form_fields": fc_n}
-    (OUT / "stability.json").write_text(json.dumps(out, indent=1))
+    (OUT / ("stability_focus.json" if focus else "stability.json")).write_text(json.dumps(out, indent=1))
     print(f"Stability ({model}, {judge.PROMPT_VERSION}): {n} calls x {runs} runs -> "
           f"{out['identical_code_decisions']:.0%} of {len(pairs)} (call, code) judge decisions identical across runs; "
           f"{identical_calls:.0%} of calls had identical defect sets; score std-dev mean {sd:.1f} (max {out['max_score_std']:.1f}); "
@@ -182,9 +189,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--stability", type=int, help="(Step 9) re-judge N random calls")
     ap.add_argument("--runs", type=int, default=3)
+    ap.add_argument("--focus", action="store_true", help="stability on the N calls with the most judge defects")
     a = ap.parse_args()
     if a.stability:
-        stability(a.stability, a.runs)
+        stability(a.stability, a.runs, focus=a.focus)
         return
     val, h, ag, human = compute()
     val.to_csv(OUT / "validation.csv", index=False)
